@@ -199,7 +199,7 @@ where
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: Fn(TReq) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = TRes> + Send + 'static,
+        Fut: Future<Output=TRes> + Send + 'static,
     {
         let key_expr = self.inner.key_expr.clone();
         let callback = Arc::new(callback);
@@ -258,8 +258,8 @@ where
             Some(timeout) => subscriber.recv_timeout(timeout),
             None => subscriber.recv().map(|s| Some(s)),
         }
-        .map_err(|_| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?
-        .ok_or_else(|| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?;
+            .map_err(|_| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?
+            .ok_or_else(|| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?;
 
         if sample.kind() != SampleKind::Put {
             return Err(Box::new(EndpointManagerError::EndpointNotAvailable(
@@ -407,7 +407,7 @@ impl Provider {
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: Fn(Query) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output=()> + Send + 'static,
     {
         let handle = Handle::current();
         let session = Arc::clone(&self.session);

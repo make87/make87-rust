@@ -265,7 +265,7 @@ where
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: Fn(T) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output=()> + Send + 'static,
     {
         let callback = Arc::new(callback);
         self.inner.subscribe_async(move |sample| {
@@ -296,7 +296,7 @@ where
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: Fn(MessageWithMetadata<T>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output=()> + Send + 'static,
     {
         let callback = Arc::new(callback);
         self.inner.subscribe_async(move |sample| {
