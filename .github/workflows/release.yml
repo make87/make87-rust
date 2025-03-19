@@ -27,11 +27,6 @@ jobs:
           toolchain: 1
           override: true
 
-      - name: Add .cargo/ to .gitignore before publishing
-        run: |
-          cd '${{ env.PACKAGE_PATH }}'
-          echo '.cargo/' >> .gitignore
-
       - name: Update Cargo.toml version
         run: |
           sed -i 's/^version = ".*"/version = "${{ github.event.inputs.version }}"/' ${{ env.PACKAGE_PATH }}/Cargo.toml
