@@ -1,4 +1,4 @@
-![make87 Banner Logo](docs/src/assets/images/make87_ME_1d_cv_cropped.svg)
+![make87 Banner Logo](https://make87-files.nyc3.digitaloceanspaces.com/assets/branding/logo/make87_ME_1d_cv_cropped.svg)
 # make87 SDK for Rust
 
 ## Overview
