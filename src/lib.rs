@@ -4,6 +4,7 @@ pub mod peripherals;
 pub mod session;
 pub mod topics;
 pub mod application_config;
+mod utils;
 
 pub use application_config::get_config_value;
 pub use endpoints::{get_provider, get_requester, resolve_endpoint_name};
