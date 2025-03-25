@@ -3,10 +3,6 @@ name: Rust SDK Release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to release"
-        required: true
-        default: "0.0.1"
       dryrun:
         description: "Dry run mode: do not publish or release"
         required: false
@@ -14,12 +10,28 @@ on:
 
 jobs:
   release:
+    if: startsWith(github.ref, 'refs/heads/release/')
     runs-on: [ self-hosted, Linux, X64 ]
+    environment: Release
     permissions:
       contents: write
     env:
       PACKAGE_PATH: .
     steps:
+      - name: Extract version from branch name
+        id: extract_version
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/release/}"
+          echo "Detected version: $BRANCH_NAME"
+
+          # Validate SemVer (with optional pre-release like -dev0)
+          if [[ "$BRANCH_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "version=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "Invalid branch name: must match release/{semver}"
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -27,13 +39,12 @@ jobs:
 
       - name: Update Cargo.toml version
         run: |
-          sed -i 's/^version = ".*"/version = "${{ github.event.inputs.version }}"/' ${{ env.PACKAGE_PATH }}/Cargo.toml
+          sed -i 's/^version = ".*"/version = "${{ steps.extract_version.outputs.version }}"/' ${{ env.PACKAGE_PATH }}/Cargo.toml
 
       - name: Publish Crates
         uses: katyo/publish-crates@v2
         with:
           registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          # Convert the dryrun input string to a boolean
           dry-run: ${{ github.event.inputs.dryrun == 'true' }}
           path: ${{ env.PACKAGE_PATH }}
           args: "--allow-dirty"
@@ -42,8 +53,8 @@ jobs:
         if: ${{ github.event.inputs.dryrun != 'true' }}
         uses: ncipollo/release-action@v1
         with:
-          tag: release/${{ github.event.inputs.version }}
-          name: Rust SDK ${{ github.event.inputs.version }}
+          tag: release/${{ steps.extract_version.outputs.version }}
+          name: Rust SDK ${{ steps.extract_version.outputs.version }}
           removeArtifacts: true
           omitBody: true
           allowUpdates: true
