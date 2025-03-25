@@ -1,5 +1,6 @@
 use crate::errors::EndpointManagerError;
 use crate::session::get_session;
+use crate::utils::{CongestionControl, HandlerChannel, Priority};
 use once_cell::sync::OnceCell;
 use prost::Message;
 use serde::Deserialize;
@@ -15,23 +16,34 @@ use tokio::time::timeout as tokio_timeout;
 use zenoh::bytes::{Encoding, ZBytes};
 use zenoh::key_expr::KeyExpr;
 use zenoh::liveliness::LivelinessToken;
-use zenoh::qos::{CongestionControl, Priority};
 use zenoh::query::{Query, Queryable, Selector};
 use zenoh::sample::SampleKind;
-use zenoh::{Session, Wait};
+use zenoh::{qos, Session, Wait};
+
+#[derive(Deserialize, Clone)]
+#[serde(tag = "endpoint_type")]
+enum Endpoint {
+    REQ {
+        endpoint_name: String,
+        endpoint_key: String,
+        requester_message_type: String,
+        provider_message_type: String,
+        congestion_control: Option<CongestionControl>,
+        priority: Option<Priority>,
+        express: Option<bool>,
+    },
+    PRV {
+        endpoint_name: String,
+        endpoint_key: String,
+        requester_message_type: String,
+        provider_message_type: String,
+        handler: Option<HandlerChannel>,
+    },
+}
 
 #[derive(Deserialize, Clone)]
 struct Endpoints {
     endpoints: Vec<Endpoint>,
-}
-
-#[derive(Deserialize, Clone)]
-struct Endpoint {
-    endpoint_type: String,
-    endpoint_name: String,
-    endpoint_key: String,
-    requester_message_type: String,
-    provider_message_type: String,
 }
 
 struct EndpointManager {
@@ -44,32 +56,59 @@ impl EndpointManager {
     fn initialize() -> Result<Self, EndpointManagerError> {
         let session = get_session();
 
-        // Parse endpoints
-        let endpoint_data = parse_endpoints()?;
+        let endpoint_data = parse_endpoints()?; // returns Endpoints
         let mut endpoints_map = HashMap::new();
         let mut endpoint_names_map = HashMap::new();
 
         for endpoint in endpoint_data.endpoints {
-            let endpoint_key = endpoint.endpoint_key.clone();
+            match endpoint {
+                Endpoint::REQ {
+                    endpoint_name,
+                    endpoint_key,
+                    congestion_control,
+                    priority,
+                    express,
+                    ..
+                } => {
+                    let qos_priority = priority.unwrap_or(Priority::Data).to_zenoh();
+                    let qos_congestion = congestion_control
+                        .unwrap_or(CongestionControl::Block)
+                        .to_zenoh();
+                    let express = express.unwrap_or(true);
 
-            let endpoint_type = match endpoint.endpoint_type.as_str() {
-                "REQ" => {
-                    let publisher = Requester::new(&endpoint_key, session.clone())?;
-                    EndpointType::Requester(Arc::new(publisher))
-                }
-                "PRV" => {
-                    let subscriber = Provider::new(&endpoint_key, session.clone())?;
-                    EndpointType::Provider(Arc::new(subscriber))
-                }
-                _ => {
-                    return Err(EndpointManagerError::UnknownEndpointType(
-                        endpoint.endpoint_key,
-                    ));
-                }
-            };
+                    let requester = Requester::new(
+                        &endpoint_key,
+                        session.clone(),
+                        qos_priority,
+                        express,
+                        qos_congestion,
+                    )?;
 
-            endpoints_map.insert(endpoint_key.clone(), Arc::new(endpoint_type));
-            endpoint_names_map.insert(endpoint.endpoint_name.clone(), endpoint_key);
+                    endpoints_map.insert(
+                        endpoint_key.clone(),
+                        Arc::new(EndpointType::Requester(Arc::new(requester))),
+                    );
+                    endpoint_names_map.insert(endpoint_name.clone(), endpoint_key.clone());
+                }
+
+                Endpoint::PRV {
+                    endpoint_name,
+                    endpoint_key,
+                    handler,
+                    ..
+                } => {
+                    let handler = handler.unwrap_or(HandlerChannel::FIFO {
+                        capacity: Some(100),
+                    });
+
+                    let provider = Provider::new(&endpoint_key, session.clone(), handler)?;
+                    endpoints_map.insert(
+                        endpoint_key.clone(),
+                        Arc::new(EndpointType::Provider(Arc::new(provider))),
+                    );
+                    endpoint_names_map.insert(endpoint_name.clone(), endpoint_key.clone());
+                }
+            }
         }
 
         Ok(EndpointManager {
@@ -179,9 +218,9 @@ where
             match query
                 .reply(key_expr.clone(), ZBytes::from(response.encode_to_vec()))
                 .encoding(Encoding::APPLICATION_PROTOBUF)
-                .priority(Priority::RealTime)
+                .priority(qos::Priority::RealTime)
                 .express(true)
-                .congestion_control(CongestionControl::Block)
+                .congestion_control(qos::CongestionControl::Block)
                 .wait()
             {
                 Ok(_) => {}
@@ -199,7 +238,7 @@ where
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: Fn(TReq) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output=TRes> + Send + 'static,
+        Fut: Future<Output = TRes> + Send + 'static,
     {
         let key_expr = self.inner.key_expr.clone();
         let callback = Arc::new(callback);
@@ -218,9 +257,9 @@ where
                     if let Err(e) = query
                         .reply(key_expr.clone(), ZBytes::from(response.encode_to_vec()))
                         .encoding(Encoding::APPLICATION_PROTOBUF)
-                        .priority(Priority::RealTime)
+                        .priority(qos::Priority::RealTime)
                         .express(true)
-                        .congestion_control(CongestionControl::Block)
+                        .congestion_control(qos::CongestionControl::Block)
                         .await
                     {
                         eprintln!("Error sending response: {:?}", e);
@@ -258,8 +297,8 @@ where
             Some(timeout) => subscriber.recv_timeout(timeout),
             None => subscriber.recv().map(|s| Some(s)),
         }
-            .map_err(|_| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?
-            .ok_or_else(|| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?;
+        .map_err(|_| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?
+        .ok_or_else(|| EndpointManagerError::EndpointNotAvailable(self.inner.name.clone()))?;
 
         if sample.kind() != SampleKind::Put {
             return Err(Box::new(EndpointManagerError::EndpointNotAvailable(
@@ -273,9 +312,9 @@ where
             .get(&self.inner.selector)
             .payload(ZBytes::from(message.encode_to_vec()))
             .encoding(Encoding::APPLICATION_PROTOBUF)
-            .priority(Priority::RealTime)
-            .express(true)
-            .congestion_control(CongestionControl::Block)
+            .priority(self.inner.priority)
+            .express(self.inner.express)
+            .congestion_control(self.inner.congestion_control)
             .wait()?
             .recv()?;
         let response_sample = reply
@@ -300,9 +339,9 @@ where
             .get(&selector)
             .payload(payload)
             .encoding(Encoding::APPLICATION_PROTOBUF)
-            .priority(Priority::RealTime)
-            .express(true)
-            .congestion_control(CongestionControl::Block)
+            .priority(self.inner.priority)
+            .express(self.inner.express)
+            .congestion_control(self.inner.congestion_control)
             .await?;
 
         let reply_future = query.recv_async();
@@ -339,16 +378,28 @@ struct Requester {
     name: String,
     selector: Selector<'static>,
     key_expr: KeyExpr<'static>,
+    priority: qos::Priority,
+    express: bool,
+    congestion_control: qos::CongestionControl,
 }
 
 impl Requester {
-    pub fn new(name: &str, session: Arc<Session>) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub fn new(
+        name: &str,
+        session: Arc<Session>,
+        priority: qos::Priority,
+        express: bool,
+        congestion_control: qos::CongestionControl,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let key_expr = KeyExpr::autocanonize(name.to_string())?;
         Ok(Requester {
             session: Arc::clone(&session),
             name: name.to_string(),
             selector: Selector::from(key_expr.clone()),
             key_expr,
+            priority,
+            express,
+            congestion_control,
         })
     }
 }
@@ -362,7 +413,12 @@ struct Provider {
 }
 
 impl Provider {
-    pub fn new(name: &str, session: Arc<Session>) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub fn new(
+        name: &str,
+        session: Arc<Session>,
+        handler: HandlerChannel,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        // TODO: Implement handler-based provider
         Ok(Provider {
             session: Arc::clone(&session),
             name: name.to_string(),
@@ -407,7 +463,7 @@ impl Provider {
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: Fn(Query) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output=()> + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         let handle = Handle::current();
         let session = Arc::clone(&self.session);

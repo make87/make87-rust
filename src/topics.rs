@@ -12,13 +12,13 @@ use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use tokio::runtime::Handle;
 use zenoh::bytes::{Encoding, ZBytes};
-use zenoh::handlers::{RingChannel, RingChannelHandler};
+use zenoh::handlers::{FifoChannel, FifoChannelHandler, RingChannel, RingChannelHandler};
 use zenoh::key_expr::KeyExpr;
 use zenoh::pubsub::Publisher as ZenohPublisher;
 use zenoh::pubsub::Subscriber as ZenohSubscriber;
-use zenoh::qos::Priority;
 use zenoh::sample::Sample;
-use zenoh::{Session, Wait};
+use zenoh::{qos, Session, Wait};
+use crate::utils::{CongestionControl, HandlerChannel, Priority, Reliability};
 
 #[derive(Deserialize, Clone)]
 struct Topics {
@@ -26,11 +26,23 @@ struct Topics {
 }
 
 #[derive(Deserialize, Clone)]
-struct Topic {
-    topic_type: String,
-    topic_name: String,
-    topic_key: String,
-    message_type: String,
+#[serde(tag = "topic_type")]
+enum Topic {
+    PUB {
+        topic_name: String,
+        topic_key: String,
+        message_type: String,
+        congestion_control: Option<CongestionControl>,
+        priority: Option<Priority>,
+        express: Option<bool>,
+        reliability: Option<Reliability>,
+    },
+    SUB {
+        topic_name: String,
+        topic_key: String,
+        message_type: String,
+        handler: Option<HandlerChannel>,
+    },
 }
 
 struct TopicManager {
@@ -43,30 +55,56 @@ impl TopicManager {
     fn initialize() -> Result<Self, TopicManagerError> {
         let session = get_session();
 
-        // Parse topics
-        let topic_data = parse_topics()?;
+        let topic_data = parse_topics()?; // returns Topics
         let mut topics_map = HashMap::new();
         let mut topic_names_map = HashMap::new();
 
         for topic in topic_data.topics {
-            let topic_key = topic.topic_key.clone();
+            match topic {
+                Topic::PUB {
+                    topic_name,
+                    topic_key,
+                    congestion_control,
+                    priority,
+                    express,
+                    reliability,
+                    ..
+                } => {
+                    let qos_priority = priority.unwrap_or(Priority::Data).to_zenoh();
+                    let qos_reliability = reliability.unwrap_or(Reliability::Reliable).to_zenoh();
+                    let qos_congestion = congestion_control
+                        .unwrap_or(CongestionControl::Drop)
+                        .to_zenoh();
+                    let express = express.unwrap_or(true);
 
-            let topic_type = match topic.topic_type.as_str() {
-                "PUB" => {
-                    let publisher = Publisher::new(&topic_key, session.clone())?;
-                    TopicType::Publisher(Arc::new(publisher))
-                }
-                "SUB" => {
-                    let subscriber = Subscriber::new(&topic_key, session.clone())?;
-                    TopicType::Subscriber(Arc::new(subscriber))
-                }
-                _ => {
-                    return Err(TopicManagerError::UnknownTopicType(topic.topic_type));
-                }
-            };
+                    let publisher = Publisher::new(
+                        &topic_key,
+                        session.clone(),
+                        qos_priority,
+                        express,
+                        qos_reliability,
+                        qos_congestion,
+                    )?;
 
-            topics_map.insert(topic_key.clone(), Arc::new(topic_type));
-            topic_names_map.insert(topic.topic_name.clone(), topic_key);
+                    topics_map.insert(topic_key.clone(), Arc::new(TopicType::Publisher(Arc::new(publisher))));
+                    topic_names_map.insert(topic_name.clone(), topic_key.clone());
+                }
+
+                Topic::SUB {
+                    topic_name,
+                    topic_key,
+                    handler,
+                    ..
+                } => {
+                    let handler = handler.unwrap_or(HandlerChannel::RING {
+                        capacity: Some(100)
+                    });
+
+                    let subscriber = Subscriber::new(&topic_key, session.clone(), handler)?;
+                    topics_map.insert(topic_key.clone(), Arc::new(TopicType::Subscriber(Arc::new(subscriber))));
+                    topic_names_map.insert(topic_name.clone(), topic_key.clone());
+                }
+            }
         }
 
         Ok(TopicManager {
@@ -170,13 +208,29 @@ where
     T: Message + Default + 'static,
 {
     pub fn receive(&self) -> Result<T, Box<dyn Error>> {
-        let sample = self.inner.subscriber.recv().unwrap();
+        let sample;
+        match &self.inner.subscriber {
+            SubscriberType::Fifo(sub) => {
+                sample = sub.recv().unwrap();
+            }
+            SubscriberType::Ring(sub) => {
+                sample = sub.recv().unwrap();
+            }
+        }
         let bytes = sample.payload().to_bytes();
         T::decode(&*bytes).map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 
     pub fn receive_with_metadata(&self) -> Result<MessageWithMetadata<T>, Box<dyn Error>> {
-        let sample = self.inner.subscriber.recv().unwrap();
+        let sample;
+        match &self.inner.subscriber {
+            SubscriberType::Fifo(sub) => {
+                sample = sub.recv().unwrap();
+            }
+            SubscriberType::Ring(sub) => {
+                sample = sub.recv().unwrap();
+            }
+        }
         let bytes = sample.payload().to_bytes();
         match T::decode(&*bytes) {
             Ok(message) => Ok(MessageWithMetadata {
@@ -236,7 +290,15 @@ where
     }
 
     pub async fn receive_async(&self) -> Result<T, Box<dyn Error + Send + Sync>> {
-        let sample = self.inner.subscriber.recv_async().await?;
+        let sample;
+        match &self.inner.subscriber {
+            SubscriberType::Fifo(sub) => {
+                sample = sub.recv_async().await?;
+            }
+            SubscriberType::Ring(sub) => {
+                sample = sub.recv_async().await?;
+            }
+        }
         let bytes = sample.payload().to_bytes();
         T::decode(&*bytes).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
@@ -244,7 +306,15 @@ where
     pub async fn receive_with_metadata_async(
         &self,
     ) -> Result<MessageWithMetadata<T>, Box<dyn Error + Send + Sync>> {
-        let sample = self.inner.subscriber.recv_async().await?;
+        let sample;
+        match &self.inner.subscriber {
+            SubscriberType::Fifo(sub) => {
+                sample = sub.recv_async().await?;
+            }
+            SubscriberType::Ring(sub) => {
+                sample = sub.recv_async().await?;
+            }
+        }
         let bytes = sample.payload().to_bytes();
         match T::decode(&*bytes) {
             Ok(message) => Ok(MessageWithMetadata {
@@ -361,13 +431,23 @@ struct Publisher {
 }
 
 impl Publisher {
-    pub fn new(name: &str, session: Arc<Session>) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub fn new(
+        name: &str,
+        session: Arc<Session>,
+        priority: qos::Priority,
+        express: bool,
+        reliability: qos::Reliability,
+        congestion_control: qos::CongestionControl,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let publisher = session
             .declare_publisher(name.to_string())
             .encoding(Encoding::APPLICATION_PROTOBUF)
-            .priority(Priority::RealTime)
-            .express(true)
+            .priority(priority)
+            .express(express)
+            .reliability(reliability)
+            .congestion_control(congestion_control)
             .wait()?;
+
         Ok(Publisher {
             name: name.to_string(),
             publisher,
@@ -375,20 +455,48 @@ impl Publisher {
     }
 }
 
+enum SubscriberType {
+    Fifo(ZenohSubscriber<FifoChannelHandler<Sample>>),
+    Ring(ZenohSubscriber<RingChannelHandler<Sample>>),
+}
+
 struct Subscriber {
     session: Arc<Session>,
     name: String,
-    subscriber: ZenohSubscriber<RingChannelHandler<Sample>>,
+    subscriber: SubscriberType,
 }
 
 impl Subscriber {
-    pub fn new(name: &str, session: Arc<Session>) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let subscriber = session
-            .declare_subscriber(KeyExpr::autocanonize(name.to_string())?)
-            .with(RingChannel::new(1))
-            .wait()?;
+    pub fn new(
+        name: &str,
+        session: Arc<Session>,
+        handler: HandlerChannel,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let key_expr = KeyExpr::new(name)?;
+
+        let subscriber = match handler {
+            HandlerChannel::FIFO { capacity } => {
+                let cap = capacity.unwrap_or(100);
+                let fifo_handler = FifoChannel::new(cap);
+                let sub = session
+                    .declare_subscriber(&key_expr)
+                    .with(fifo_handler)
+                    .wait()?;
+                SubscriberType::Fifo(sub)
+            }
+            HandlerChannel::RING { capacity } => {
+                let cap = capacity.unwrap_or(100);
+                let ring_handler = RingChannel::new(cap);
+                let sub = session
+                    .declare_subscriber(&key_expr)
+                    .with(ring_handler)
+                    .wait()?;
+                SubscriberType::Ring(sub)
+            }
+        };
+
         Ok(Subscriber {
-            session: Arc::clone(&session),
+            session,
             name: name.to_string(),
             subscriber,
         })
