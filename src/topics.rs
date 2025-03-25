@@ -96,10 +96,8 @@ impl TopicManager {
                     handler,
                     ..
                 } => {
-                    let handler = handler.unwrap_or(HandlerChannel::FIFO {
-                        // API_DATA_RECEPTION_CHANNEL_SIZE=256
-                        // https://github.com/eclipse-zenoh/zenoh/blob/76554672656c5e1ca28eab58f80faba4640d5419/zenoh/src/api/session.rs#L126
-                        capacity: Some(256)
+                    let handler = handler.unwrap_or(HandlerChannel::RING {
+                        capacity: Some(100)
                     });
 
                     let subscriber = Subscriber::new(&topic_key, session.clone(), handler)?;
@@ -478,7 +476,7 @@ impl Subscriber {
 
         let subscriber = match handler {
             HandlerChannel::FIFO { capacity } => {
-                let cap = capacity.unwrap_or(256);
+                let cap = capacity.unwrap_or(100);
                 let fifo_handler = FifoChannel::new(cap);
                 let sub = session
                     .declare_subscriber(&key_expr)
@@ -487,7 +485,7 @@ impl Subscriber {
                 SubscriberType::Fifo(sub)
             }
             HandlerChannel::RING { capacity } => {
-                let cap = capacity.unwrap_or(256);
+                let cap = capacity.unwrap_or(100);
                 let ring_handler = RingChannel::new(cap);
                 let sub = session
                     .declare_subscriber(&key_expr)

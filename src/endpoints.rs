@@ -98,9 +98,7 @@ impl EndpointManager {
                     ..
                 } => {
                     let handler = handler.unwrap_or(HandlerChannel::FIFO {
-                        // API_QUERY_RECEPTION_CHANNEL_SIZE=256
-                        // https://github.com/eclipse-zenoh/zenoh/blob/76554672656c5e1ca28eab58f80faba4640d5419/zenoh/src/api/session.rs#L127
-                        capacity: Some(256),
+                        capacity: Some(100),
                     });
 
                     let provider = Provider::new(&endpoint_key, session.clone(), handler)?;
