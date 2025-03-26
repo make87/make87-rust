@@ -71,7 +71,9 @@ impl log::Log for Logger {
                 thread_id: 0,
             };
 
-            self.log_topic.publish(&message).unwrap();
+            if let Err(e) = self.log_topic.publish(&message) {
+                eprintln!("Failed to publish log message: {:?}", e);
+            }
         }
     }
 
