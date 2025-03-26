@@ -1,3 +1,8 @@
+mod handlers {
+    pub(crate) mod logging;
+    pub(crate) mod stderr;
+    pub(crate) mod stdout;
+}
 pub mod endpoints;
 pub mod errors;
 pub mod peripherals;
@@ -17,6 +22,24 @@ pub fn initialize() {
     endpoints::initialize().unwrap();
     peripherals::initialize().unwrap();
     application_config::initialize().unwrap();
+    match handlers::logging::setup() {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("{}", e);
+        }
+    }
+    match handlers::stdout::setup() {
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!("{}", e);
+        }
+    }
+    match handlers::stderr::setup() {
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!("{}", e);
+        }
+    }
 }
 
 pub fn keep_running() {
