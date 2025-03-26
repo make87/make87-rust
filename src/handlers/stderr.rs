@@ -42,7 +42,9 @@ pub(crate) fn setup() -> Result<(), Box<dyn std::error::Error>> {
                                 thread_id: 0,
                             };
 
-                            publisher.publish(&message).unwrap();
+                            if let Err(e) = publisher.publish(&message) {
+                                eprintln!("Error publishing message: {}", e);
+                            }
                         }
                         Err(e) => {
                             eprintln!("Error reading from stderr buffer: {}", e);
