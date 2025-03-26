@@ -4,6 +4,7 @@ version = "0.0.0"
 authors = ["Nisse Knudsen <nisse@make87.com>", "Phillip Thomas <phillip@make87.com>"]
 edition = "2021"
 homepage = "https://www.make87.com"
+repository = "https://github.com/make87/make87-rust"
 license-file = "LICENSE"
 description = "Rust SDK for make87 platform."
 
