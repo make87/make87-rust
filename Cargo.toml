@@ -16,5 +16,5 @@ thiserror = "1.0.63"
 tokio = { version = "1.16.1", features = ["time"] }
 zenoh = { version = "1.2.1", features = ["unstable"] }
 log = "0.4.22"
-make87_messages = "*"
+make87_messages = "^0.0.94"
 gag = "1.0.0"
