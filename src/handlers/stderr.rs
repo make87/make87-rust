@@ -13,7 +13,7 @@ pub(crate) fn setup() -> Result<(), Box<dyn std::error::Error>> {
             let redirect = BufferRedirect::stderr().unwrap();
             let sleep_duration = time::Duration::from_millis(20);
             let entity_name = format!(
-                "{}/stderr",
+                "{}/logs",
                 std::env::var("DEPLOYED_APPLICATION_NAME").unwrap_or("".to_string())
             );
             // Read from the redirect in the main thread and send data through the channel

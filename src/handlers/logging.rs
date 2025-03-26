@@ -34,7 +34,7 @@ impl Logger {
         Logger {
             log_topic,
             entity_name: format!(
-                "{}/logging",
+                "{}/logs",
                 std::env::var("DEPLOYED_APPLICATION_NAME").unwrap_or("".to_string())
             ),
         }
