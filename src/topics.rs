@@ -27,8 +27,9 @@ struct Topics {
 
 #[derive(Deserialize, Clone)]
 #[serde(tag = "topic_type")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum Topic {
-    PUB {
+    Pub {
         topic_name: String,
         topic_key: String,
         message_type: String,
@@ -37,7 +38,7 @@ enum Topic {
         express: Option<bool>,
         reliability: Option<Reliability>,
     },
-    SUB {
+    Sub {
         topic_name: String,
         topic_key: String,
         message_type: String,
@@ -61,7 +62,7 @@ impl TopicManager {
 
         for topic in topic_data.topics {
             match topic {
-                Topic::PUB {
+                Topic::Pub {
                     topic_name,
                     topic_key,
                     congestion_control,
@@ -90,7 +91,7 @@ impl TopicManager {
                     topic_names_map.insert(topic_name.clone(), topic_key.clone());
                 }
 
-                Topic::SUB {
+                Topic::Sub {
                     topic_name,
                     topic_key,
                     handler,

@@ -22,8 +22,9 @@ use zenoh::{qos, Session, Wait};
 
 #[derive(Deserialize, Clone)]
 #[serde(tag = "endpoint_type")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum Endpoint {
-    REQ {
+    Req {
         endpoint_name: String,
         endpoint_key: String,
         requester_message_type: String,
@@ -32,7 +33,7 @@ enum Endpoint {
         priority: Option<Priority>,
         express: Option<bool>,
     },
-    PRV {
+    Prv {
         endpoint_name: String,
         endpoint_key: String,
         requester_message_type: String,
@@ -62,7 +63,7 @@ impl EndpointManager {
 
         for endpoint in endpoint_data.endpoints {
             match endpoint {
-                Endpoint::REQ {
+                Endpoint::Req {
                     endpoint_name,
                     endpoint_key,
                     congestion_control,
@@ -91,7 +92,7 @@ impl EndpointManager {
                     endpoint_names_map.insert(endpoint_name.clone(), endpoint_key.clone());
                 }
 
-                Endpoint::PRV {
+                Endpoint::Prv {
                     endpoint_name,
                     endpoint_key,
                     handler,
