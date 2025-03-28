@@ -61,7 +61,8 @@ impl CongestionControl {
 
 #[derive(Deserialize, Clone)]
 #[serde(tag = "handler_type")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) enum HandlerChannel {
-    FIFO { capacity: Option<usize> },
-    RING { capacity: Option<usize> },
+    Fifo { capacity: Option<usize> },
+    Ring { capacity: Option<usize> },
 }

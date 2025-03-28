@@ -97,7 +97,7 @@ impl EndpointManager {
                     handler,
                     ..
                 } => {
-                    let handler = handler.unwrap_or(HandlerChannel::FIFO {
+                    let handler = handler.unwrap_or(HandlerChannel::Fifo {
                         capacity: Some(100),
                     });
 
