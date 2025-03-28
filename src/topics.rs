@@ -27,8 +27,9 @@ struct Topics {
 
 #[derive(Deserialize, Clone)]
 #[serde(tag = "topic_type")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 enum Topic {
-    PUB {
+    Pub {
         topic_name: String,
         topic_key: String,
         message_type: String,
@@ -37,7 +38,7 @@ enum Topic {
         express: Option<bool>,
         reliability: Option<Reliability>,
     },
-    SUB {
+    Sub {
         topic_name: String,
         topic_key: String,
         message_type: String,
@@ -61,7 +62,7 @@ impl TopicManager {
 
         for topic in topic_data.topics {
             match topic {
-                Topic::PUB {
+                Topic::Pub {
                     topic_name,
                     topic_key,
                     congestion_control,
@@ -90,13 +91,13 @@ impl TopicManager {
                     topic_names_map.insert(topic_name.clone(), topic_key.clone());
                 }
 
-                Topic::SUB {
+                Topic::Sub {
                     topic_name,
                     topic_key,
                     handler,
                     ..
                 } => {
-                    let handler = handler.unwrap_or(HandlerChannel::RING {
+                    let handler = handler.unwrap_or(HandlerChannel::Ring {
                         capacity: Some(100)
                     });
 
@@ -475,7 +476,7 @@ impl Subscriber {
         let key_expr = KeyExpr::new(name)?;
 
         let subscriber = match handler {
-            HandlerChannel::FIFO { capacity } => {
+            HandlerChannel::Fifo { capacity } => {
                 let cap = capacity.unwrap_or(100);
                 let fifo_handler = FifoChannel::new(cap);
                 let sub = session
@@ -484,7 +485,7 @@ impl Subscriber {
                     .wait()?;
                 SubscriberType::Fifo(sub)
             }
-            HandlerChannel::RING { capacity } => {
+            HandlerChannel::Ring { capacity } => {
                 let cap = capacity.unwrap_or(100);
                 let ring_handler = RingChannel::new(cap);
                 let sub = session
