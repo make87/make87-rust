@@ -1,7 +1,8 @@
 use crate::errors::TopicManagerError;
 use crate::session::get_session;
+use crate::utils::{CongestionControl, HandlerChannel, Priority, Reliability};
+use make87_messages::Message;
 use once_cell::sync::OnceCell;
-use prost::Message;
 use serde::Deserialize;
 use std::any::type_name;
 use std::clone::Clone;
@@ -18,7 +19,6 @@ use zenoh::pubsub::Publisher as ZenohPublisher;
 use zenoh::pubsub::Subscriber as ZenohSubscriber;
 use zenoh::sample::Sample;
 use zenoh::{qos, Session, Wait};
-use crate::utils::{CongestionControl, HandlerChannel, Priority, Reliability};
 
 #[derive(Deserialize, Clone)]
 struct Topics {

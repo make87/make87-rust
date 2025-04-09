@@ -2,7 +2,6 @@ use crate::errors::EndpointManagerError;
 use crate::session::get_session;
 use crate::utils::{CongestionControl, HandlerChannel, Priority};
 use once_cell::sync::OnceCell;
-use prost::Message;
 use serde::Deserialize;
 use std::clone::Clone;
 use std::collections::HashMap;
@@ -19,6 +18,7 @@ use zenoh::liveliness::LivelinessToken;
 use zenoh::query::{Query, Queryable, Selector};
 use zenoh::sample::SampleKind;
 use zenoh::{qos, Session, Wait};
+use make87_messages::Message;
 
 #[derive(Deserialize, Clone)]
 #[serde(tag = "endpoint_type")]

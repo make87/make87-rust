@@ -3,11 +3,10 @@ use crate::{get_publisher, resolve_topic_name};
 use log::{Level, LevelFilter, Metadata, Record, SetLoggerError};
 use make87_messages::core::Header;
 use make87_messages::text::{log_message, LogMessage};
-use make87_messages::well_known_types::Timestamp;
-use make87_messages::CurrentTime;
 use once_cell::sync::Lazy;
 use std::process;
 use std::sync::Once;
+use make87_messages::google::protobuf::Timestamp;
 
 static LOGGER: Lazy<Option<&'static Logger>> = Lazy::new(|| {
     if let Some(log_topic_name) = resolve_topic_name("LOGS") {
@@ -49,7 +48,7 @@ impl log::Log for Logger {
         if self.enabled(record.metadata()) {
             let message = LogMessage {
                 header: Some(Header {
-                    timestamp: Timestamp::get_current_time(),
+                    timestamp: Timestamp::get_current_time().into(),
                     reference_id: 0,
                     entity_path: self.entity_name.clone(),
                 }),
