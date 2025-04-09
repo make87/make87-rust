@@ -2,10 +2,9 @@ use crate::topics::{get_publisher, resolve_topic_name};
 use gag::BufferRedirect;
 use make87_messages::core::Header;
 use make87_messages::text::{log_message, LogMessage};
-use make87_messages::well_known_types::Timestamp;
-use make87_messages::CurrentTime;
 use std::io::{BufRead, BufReader};
 use std::{process, thread, time};
+use make87_messages::google::protobuf::Timestamp;
 
 pub(crate) fn setup() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(stdout_topic_name) = resolve_topic_name("STDOUT") {
@@ -29,7 +28,7 @@ pub(crate) fn setup() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(_) => {
                             let message = LogMessage {
                                 header: Some(Header {
-                                    timestamp: Timestamp::get_current_time(),
+                                    timestamp: Timestamp::get_current_time().into(),
                                     reference_id: 0,
                                     entity_path: entity_name.clone(),
                                 }),
