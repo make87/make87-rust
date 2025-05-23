@@ -3,7 +3,7 @@
 
 ## Overview
 
-The make87 SDK for Rust provides tools and libraries to interact with the make87 platform. This SDK is designed to be compatible with Rust 2021 edition.
+The make87 SDK for Rust provides tools and libraries to interact with the make87 platform. This SDK is designed to be compatible with Rust 2021 edition and supports optional features for different transports and encodings.
 
 ## Installation
 
@@ -14,28 +14,34 @@ To add the SDK to your project, include it in your `Cargo.toml`:
 make87 = "*"  # replace with latest version
 ```
 
-### Dependencies
+### Optional Features
 
-The SDK has the following dependencies:
+You can enable additional features for transport and encoding support:
 
-- `once_cell = "1.20.2"`
-- `prost = "0.13"`
-- `serde = { version = "1.0.210", features = ["derive"] }`
-- `serde_json = "1.0.128"`
-- `thiserror = "1.0.63"`
-- `tokio = { version = "1.16.1", features = ["time"] }`
-- `zenoh = { version = "1.2.1", features = ["unstable"] }`
+- `zenoh` → Enables Zenoh transport (enables `interfaces::zenoh`)
+- `protobuf` → Enables Protobuf encoding (enables `encodings::protobuf`)
+- `yaml` → Enables YAML encoding (enables `encodings::yaml`)
+
+Example:
+
+```toml
+[dependencies]
+make87 = { version = "*", features = ["zenoh", "protobuf", "yaml"] }
+```
+
+## Usage
+
+### Feature-gated Modules
+
+- `interfaces::zenoh` is only available if the `zenoh` feature is enabled.
+- `encodings::protobuf` is only available if the `protobuf` feature is enabled.
+- `encodings::yaml` is only available if the `yaml` feature is enabled.
+
 
 ## Documentation
 To build the documentation locally, use the following command:
 ```bash
 cargo doc --open
-```
-
-Then, build the documentation using MkDocs:
-
-```bash
-mkdocs build
 ```
 
 ## Contributing
@@ -45,5 +51,6 @@ We welcome contributions to the make87 SDK. Please follow these steps to contrib
 1. Fork the repository.
 2. Create a new branch for your feature or bugfix.
 3. Make your changes.
-4. Ensure all tests pass.
+4. Ensure all tests pass (`cargo test`).
 5. Submit a pull request.
+

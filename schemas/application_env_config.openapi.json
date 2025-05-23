@@ -1,0 +1,1108 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "m87_core",
+    "description": "",
+    "license": {
+      "identifier": "CUSTOM",
+      "name": "m87_core"
+    },
+    "version": "0.0.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "ApplicationEnvConfig": {
+        "type": "object",
+        "required": [
+          "topics",
+          "endpoints",
+          "services",
+          "url_mapping",
+          "peripherals",
+          "config",
+          "deployed_application_id",
+          "system_id",
+          "deployed_application_name",
+          "is_release_version",
+          "vpn_ip",
+          "port_config",
+          "application_id",
+          "application_name"
+        ],
+        "properties": {
+          "application_id": {
+            "type": "string"
+          },
+          "application_name": {
+            "type": "string"
+          },
+          "config": {},
+          "deployed_application_id": {
+            "type": "string"
+          },
+          "deployed_application_name": {
+            "type": "string"
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EndpointConfig"
+            }
+          },
+          "entrypoint_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "git_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_release_version": {
+            "type": "boolean"
+          },
+          "peripherals": {
+            "$ref": "#/components/schemas/MountedPeripherals"
+          },
+          "port_config": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortConfig"
+            }
+          },
+          "public_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceConfig"
+            }
+          },
+          "storage_access_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage_endpoint_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage_secret_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "system_id": {
+            "type": "string"
+          },
+          "topics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopicConfig"
+            }
+          },
+          "url_mapping": {
+            "$ref": "#/components/schemas/URLMapping"
+          },
+          "vpn_ip": {
+            "type": "string"
+          }
+        }
+      },
+      "CameraPeripheral": {
+        "type": "object",
+        "required": [
+          "reference",
+          "peripheral_type",
+          "name",
+          "device_nodes",
+          "volumes"
+        ],
+        "properties": {
+          "camera_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          },
+          "protocol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "type": "string"
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": false,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "CodecPeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "name",
+          "supported_codecs",
+          "device_nodes"
+        ],
+        "properties": {
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          },
+          "supported_codecs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "EndpointConfig": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "endpoint_name",
+              "endpoint_key",
+              "requester_message_type",
+              "provider_message_type",
+              "endpoint_type"
+            ],
+            "properties": {
+              "endpoint_key": {
+                "type": "string"
+              },
+              "endpoint_name": {
+                "type": "string"
+              },
+              "endpoint_type": {
+                "type": "string",
+                "enum": [
+                  "REQ"
+                ]
+              },
+              "interface_name": {
+                "type": "string"
+              },
+              "provider_message_type": {
+                "type": "string"
+              },
+              "requester_message_type": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "required": [
+              "endpoint_name",
+              "endpoint_key",
+              "requester_message_type",
+              "provider_message_type",
+              "endpoint_type"
+            ],
+            "properties": {
+              "endpoint_key": {
+                "type": "string"
+              },
+              "endpoint_name": {
+                "type": "string"
+              },
+              "endpoint_type": {
+                "type": "string",
+                "enum": [
+                  "PRV"
+                ]
+              },
+              "interface_name": {
+                "type": "string"
+              },
+              "provider_message_type": {
+                "type": "string"
+              },
+              "requester_message_type": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        ]
+      },
+      "GenericDevicePeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "name",
+          "device_node"
+        ],
+        "properties": {
+          "device_node": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          }
+        }
+      },
+      "GpioLineInfo": {
+        "type": "object",
+        "required": [
+          "line_offset",
+          "direction",
+          "active_state",
+          "used"
+        ],
+        "properties": {
+          "active_state": {
+            "type": "string"
+          },
+          "consumer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "direction": {
+            "type": "string"
+          },
+          "line_offset": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "used": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GpioPeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "chip_name",
+          "label",
+          "num_lines",
+          "device_nodes",
+          "lines"
+        ],
+        "properties": {
+          "chip_name": {
+            "type": "string"
+          },
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "label": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GpioLineInfo"
+            }
+          },
+          "num_lines": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          }
+        }
+      },
+      "GpuPeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "name",
+          "model",
+          "device_nodes"
+        ],
+        "properties": {
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          },
+          "vram": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "I2cDetectedDevice": {
+        "type": "object",
+        "required": [
+          "address"
+        ],
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "I2cPeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "bus_number",
+          "name",
+          "device_nodes",
+          "detected_devices"
+        ],
+        "properties": {
+          "bus_number": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "detected_devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/I2cDetectedDevice"
+            }
+          },
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          }
+        }
+      },
+      "IspPeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "name",
+          "supported_features",
+          "device_nodes"
+        ],
+        "properties": {
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          },
+          "supported_features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MappedURL": {
+        "type": "object",
+        "required": [
+          "vpn_ip",
+          "vpn_port"
+        ],
+        "properties": {
+          "public_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public_port": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "vpn_ip": {
+            "type": "string"
+          },
+          "vpn_port": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "MountedPeripheral": {
+        "type": "object",
+        "required": [
+          "name",
+          "peripheral"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the peripheral. That is used by the application version to identify the peripheral"
+          },
+          "peripheral": {
+            "$ref": "#/components/schemas/Peripheral"
+          }
+        }
+      },
+      "MountedPeripherals": {
+        "type": "object",
+        "required": [
+          "peripherals"
+        ],
+        "properties": {
+          "peripherals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MountedPeripheral"
+            }
+          }
+        }
+      },
+      "OtherPeripheral": {
+        "type": "object",
+        "required": [
+          "reference",
+          "peripheral_type",
+          "name",
+          "device_nodes"
+        ],
+        "properties": {
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          },
+          "reference": {
+            "type": "string"
+          }
+        }
+      },
+      "Peripheral": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "GPU"
+            ],
+            "properties": {
+              "GPU": {
+                "$ref": "#/components/schemas/GpuPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "I2C"
+            ],
+            "properties": {
+              "I2C": {
+                "$ref": "#/components/schemas/I2cPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "GPIO"
+            ],
+            "properties": {
+              "GPIO": {
+                "$ref": "#/components/schemas/GpioPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "Camera"
+            ],
+            "properties": {
+              "Camera": {
+                "$ref": "#/components/schemas/CameraPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "RealSense"
+            ],
+            "properties": {
+              "RealSense": {
+                "$ref": "#/components/schemas/RealSenseCameraPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "ISP"
+            ],
+            "properties": {
+              "ISP": {
+                "$ref": "#/components/schemas/IspPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "Codec"
+            ],
+            "properties": {
+              "Codec": {
+                "$ref": "#/components/schemas/CodecPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "Rendering"
+            ],
+            "properties": {
+              "Rendering": {
+                "$ref": "#/components/schemas/RenderingPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "Speaker"
+            ],
+            "properties": {
+              "Speaker": {
+                "$ref": "#/components/schemas/OtherPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "Keyboard"
+            ],
+            "properties": {
+              "Keyboard": {
+                "$ref": "#/components/schemas/OtherPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "Mouse"
+            ],
+            "properties": {
+              "Mouse": {
+                "$ref": "#/components/schemas/OtherPeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "GenericDevice"
+            ],
+            "properties": {
+              "GenericDevice": {
+                "$ref": "#/components/schemas/GenericDevicePeripheral"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "Other"
+            ],
+            "properties": {
+              "Other": {
+                "$ref": "#/components/schemas/OtherPeripheral"
+              }
+            }
+          }
+        ]
+      },
+      "PeripheralType": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "Camera"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "RealSense"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "Speaker"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "Keyboard"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "Mouse"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "Microphone"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "GPU"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "I2C"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "GPIO"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "ISP"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "Codec"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "Rendering"
+            ]
+          },
+          {
+            "type": "string",
+            "enum": [
+              "GenericDevice"
+            ]
+          },
+          {
+            "type": "object",
+            "required": [
+              "Other"
+            ],
+            "properties": {
+              "Other": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "PortConfig": {
+        "type": "object",
+        "required": [
+          "name",
+          "target_port",
+          "published_port"
+        ],
+        "properties": {
+          "is_system_interface": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ProtocolEnum"
+          },
+          "publish_mode": {
+            "$ref": "#/components/schemas/PublishMode"
+          },
+          "published_port": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The port on the swarm hosts.",
+            "minimum": 0
+          },
+          "target_port": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The port inside the container.",
+            "minimum": 0
+          }
+        }
+      },
+      "ProtocolEnum": {
+        "type": "string",
+        "enum": [
+          "TCP",
+          "UDP",
+          "SCTP",
+          "HTTP",
+          "WS",
+          "SSH"
+        ]
+      },
+      "PublishMode": {
+        "type": "string",
+        "enum": [
+          "Ingress",
+          "Host"
+        ]
+      },
+      "RealSenseCameraPeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "name",
+          "device_nodes",
+          "serial_number",
+          "model"
+        ],
+        "properties": {
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          },
+          "serial_number": {
+            "type": "string"
+          }
+        }
+      },
+      "RenderingPeripheral": {
+        "type": "object",
+        "required": [
+          "peripheral_type",
+          "name",
+          "supported_apis",
+          "device_nodes"
+        ],
+        "properties": {
+          "device_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_performance": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "peripheral_type": {
+            "$ref": "#/components/schemas/PeripheralType"
+          },
+          "supported_apis": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ServiceConfig": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The service is a client",
+            "required": [
+              "Client"
+            ],
+            "properties": {
+              "Client": {
+                "type": "object",
+                "description": "The service is a client",
+                "required": [
+                  "name",
+                  "spec",
+                  "key"
+                ],
+                "properties": {
+                  "interface_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The service is a server",
+            "required": [
+              "Server"
+            ],
+            "properties": {
+              "Server": {
+                "type": "object",
+                "description": "The service is a server",
+                "required": [
+                  "name",
+                  "key",
+                  "spec"
+                ],
+                "properties": {
+                  "interface_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        ]
+      },
+      "TopicConfig": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "topic_name",
+              "topic_key",
+              "message_type",
+              "topic_type"
+            ],
+            "properties": {
+              "interface_name": {
+                "type": "string"
+              },
+              "message_type": {
+                "type": "string"
+              },
+              "topic_key": {
+                "type": "string"
+              },
+              "topic_name": {
+                "type": "string"
+              },
+              "topic_type": {
+                "type": "string",
+                "enum": [
+                  "PUB"
+                ]
+              }
+            },
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "required": [
+              "topic_name",
+              "topic_key",
+              "message_type",
+              "topic_type"
+            ],
+            "properties": {
+              "interface_name": {
+                "type": "string"
+              },
+              "message_type": {
+                "type": "string"
+              },
+              "topic_key": {
+                "type": "string"
+              },
+              "topic_name": {
+                "type": "string"
+              },
+              "topic_type": {
+                "type": "string",
+                "enum": [
+                  "SUB"
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        ]
+      },
+      "URLMapping": {
+        "type": "object",
+        "required": [
+          "name_to_url"
+        ],
+        "properties": {
+          "name_to_url": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MappedURL"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}
