@@ -1,5 +1,5 @@
 use super::{EncodeError, Encoder};
-use serde::ser::{Serialize, Serializer};
+use serde::ser::{Serialize};
 use serde::de::DeserializeOwned;
 use serde_yaml::{from_slice, to_string};
 
@@ -24,7 +24,7 @@ where
 mod tests {
     use super::*;
     use serde::de::Deserializer;
-    use serde::{Deserialize, Serialize};
+    use serde::{Deserialize, Serialize, Serializer};
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
     struct Example {
