@@ -1,9 +1,18 @@
 use serde::{Serialize, de::DeserializeOwned};
+use std::marker::PhantomData;
 use super::{Encoder, EncodeError};
 
-pub struct JsonEncoder;
+pub struct JsonEncoder<T> {
+    _marker: PhantomData<T>,
+}
 
-impl<T> Encoder<T> for JsonEncoder
+impl<T> JsonEncoder<T> {
+    pub fn new() -> Self {
+        JsonEncoder { _marker: PhantomData }
+    }
+}
+
+impl<T> Encoder<T> for JsonEncoder<T>
 where
     T: Serialize + DeserializeOwned,
 {
@@ -29,7 +38,7 @@ mod tests {
 
     #[test]
     fn test_json_encoder_roundtrip() {
-        let encoder = JsonEncoder;
+        let encoder = JsonEncoder::<Example>::new();
         let original = Example { id: 42, name: "hello".to_string() };
         // Encode to JSON bytes
         let json_bytes = encoder.encode(&original).expect("encode failed");
@@ -43,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_json_encoder_decode_error() {
-        let encoder = JsonEncoder;
+        let encoder = JsonEncoder::<Example>::new();
         // Not valid JSON
         let bad_json = b"{ not json: }";
         let result: Result<Example, _> = encoder.decode(bad_json);
@@ -70,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_json_encoder_encode_error() {
-        let encoder = JsonEncoder;
+        let encoder = JsonEncoder::<NotSerializable>::new();
         let value = NotSerializable;
         let result = encoder.encode(&value);
         assert!(result.is_err());

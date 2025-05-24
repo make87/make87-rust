@@ -2,10 +2,19 @@ use super::{EncodeError, Encoder};
 use serde::ser::{Serialize};
 use serde::de::DeserializeOwned;
 use serde_yaml::{from_slice, to_string};
+use std::marker::PhantomData;
 
-pub struct YamlEncoder;
+pub struct YamlEncoder<T> {
+    _marker: PhantomData<T>,
+}
 
-impl<T> Encoder<T> for YamlEncoder
+impl<T> YamlEncoder<T> {
+    pub fn new() -> Self {
+        YamlEncoder { _marker: PhantomData }
+    }
+}
+
+impl<T> Encoder<T> for YamlEncoder<T>
 where
     T: Serialize + DeserializeOwned,
 {
@@ -34,7 +43,7 @@ mod tests {
 
     #[test]
     fn test_yaml_encoder_roundtrip() {
-        let encoder = YamlEncoder;
+        let encoder = YamlEncoder::<Example>::new();
         let original = Example { id: 42, name: "hello".to_string() };
 
         // Encode to YAML bytes
@@ -50,7 +59,7 @@ mod tests {
 
     #[test]
     fn test_yaml_encoder_decode_error() {
-        let encoder = YamlEncoder;
+        let encoder = YamlEncoder::<Example>::new();
         // Not valid YAML
         let bad_yaml = b"{ not yaml: }";
         let result: Result<Example, _> = encoder.decode(bad_yaml);
@@ -79,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_yaml_encoder_encode_error() {
-        let encoder = YamlEncoder;
+        let encoder = YamlEncoder::<NotSerializable>::new();
         let value = NotSerializable;
         let result = encoder.encode(&value);
         assert!(result.is_err());

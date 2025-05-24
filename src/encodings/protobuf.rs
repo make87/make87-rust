@@ -1,9 +1,18 @@
 use prost::Message;
+use std::marker::PhantomData;
 use super::{Encoder, EncodeError};
 
-pub struct ProtobufEncoder;
+pub struct ProtobufEncoder<T> {
+    _marker: PhantomData<T>,
+}
 
-impl<T> Encoder<T> for ProtobufEncoder
+impl<T> ProtobufEncoder<T> {
+    pub fn new() -> Self {
+        ProtobufEncoder { _marker: PhantomData }
+    }
+}
+
+impl<T> Encoder<T> for ProtobufEncoder<T>
 where
     T: Message + Default,
 {
@@ -33,7 +42,7 @@ mod tests {
 
     #[test]
     fn test_protobuf_encoder_roundtrip() {
-        let encoder = ProtobufEncoder;
+        let encoder = ProtobufEncoder::<Example>::new();
         let original = Example { id: 42, name: "hello".to_string() };
         let encoded = encoder.encode(&original).expect("encode failed");
         let decoded: Example = encoder.decode(&encoded).expect("decode failed");
@@ -42,7 +51,7 @@ mod tests {
 
     #[test]
     fn test_protobuf_encoder_decode_error() {
-        let encoder = ProtobufEncoder;
+        let encoder = ProtobufEncoder::<Example>::new();
         let bad_data = b"not protobuf";
         let result: Result<Example, _> = encoder.decode(bad_data);
         assert!(result.is_err());
@@ -61,7 +70,7 @@ mod tests {
 
     #[test]
     fn test_protobuf_encoder_encode_error() {
-        let encoder = ProtobufEncoder;
+        let encoder = ProtobufEncoder::<FailingMessage>::new();
         #[derive(Debug, Default)]
         struct FailingMessage;
         impl Message for FailingMessage {
@@ -79,4 +88,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

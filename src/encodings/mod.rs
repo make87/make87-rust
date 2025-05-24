@@ -1,8 +1,15 @@
-pub mod json;
+mod json;
+pub use json::JsonEncoder;
+
 #[cfg(feature = "yaml")]
-pub mod yaml;
+mod yaml;
+#[cfg(feature = "yaml")]
+pub use yaml::YamlEncoder;
+
 #[cfg(feature = "protobuf")]
-pub mod protobuf;
+mod protobuf;
+#[cfg(feature = "protobuf")]
+pub use protobuf::ProtobufEncoder;
 
 use std::fmt;
 
@@ -21,4 +28,3 @@ pub trait Encoder<T> {
     fn encode(&self, value: &T) -> Result<Vec<u8>, EncodeError>;
     fn decode(&self, data: &[u8]) -> Result<T, EncodeError>;
 }
-
