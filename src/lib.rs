@@ -5,6 +5,7 @@ pub mod config;
 mod internal;
 pub mod models;
 pub mod peripherals;
+pub mod storage;
 
 pub fn run_forever() {
     loop {

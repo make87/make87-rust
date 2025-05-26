@@ -20,6 +20,9 @@ zenoh = { version = "1.4.0", features = ["unstable"], optional = true }
 prost = { version = "0.13.5" , optional = true}
 serde_yaml = {  version = "0.9.33", optional = true }
 make87_messages = "*"
+aws-config =  { version = "1.5.18", optional = true }
+aws-sdk-s3 = { version = "1.78.0", optional = true }
+aws-credential-types = { version = "1.2.3", optional = true, features = ["hardcoded-credentials"] }
 
 [dev-dependencies]
 assert_cmd = "2.0.17"
@@ -28,3 +31,4 @@ assert_cmd = "2.0.17"
 zenoh = ["dep:zenoh"]
 protobuf = ["dep:prost"]
 yaml = ["dep:serde_yaml"]
+storage = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-credential-types"]
