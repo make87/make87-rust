@@ -1,12 +1,11 @@
 use crate::config::load_config_from_default_env;
-use crate::models::ApplicationConfig;
+use crate::models::{ApplicationConfig, StorageConfig};
 use aws_config;
 use aws_config::BehaviorVersion;
 use aws_credential_types;
 use aws_credential_types::provider::SharedCredentialsProvider;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::Client;
-use aws_sdk_s3::config::endpoint::Endpoint;
 use serde::de::StdError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,13 +51,17 @@ impl S3Path {
 
     /// Returns just the filename (if any) from the key
     pub fn filename(&self) -> Option<&str> {
-        self.key.rsplit('/').next()
+        if self.key.is_empty() {
+            None
+        } else {
+            self.key.rsplit('/').next()
+        }
     }
 
     /// Returns the parent path (if any)
     pub fn parent(&self) -> Option<Self> {
         let mut parts: Vec<&str> = self.key.split('/').collect();
-        if parts.is_empty() {
+        if parts.is_empty() || self.key.is_empty() {
             return None;
         }
         parts.pop();
@@ -68,7 +71,6 @@ impl S3Path {
         })
     }
 }
-
 
 impl std::fmt::Display for S3Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -80,7 +82,7 @@ impl std::fmt::Display for S3Path {
     }
 }
 
-struct BlobStorage {
+pub struct BlobStorage {
     config: ApplicationConfig,
 }
 
@@ -95,39 +97,46 @@ impl BlobStorage {
     }
 
     pub async fn get_client(&self) -> Result<Client, Box<dyn std::error::Error>> {
+        let storage = self.get_storage_config().ok_or("No storage config found")?;
         let credentials = Credentials::from_keys(
-            &self.config.storage_access_key,
-            &self.config.storage_secret_key,
+            &storage.access_key,
+            &storage.secret_key,
             None,
         );
         let provider = SharedCredentialsProvider::new(credentials);
 
-        let shared_config = aws_config::load_defaults(BehaviorVersion::latest())
-            .credentials_provider(provider)
-            .load()
-            .await;
+        let mut shared_config = aws_config::load_defaults(BehaviorVersion::latest())
+            .await
+            .to_builder()
+            .credentials_provider(provider);
 
-        let endpoint = Endpoint::builder()
-            .url(&self.config.storage_endpoint_url)
-            .build();
+        // Set custom endpoint if provided
+        if !storage.endpoint_url.is_empty() {
+            shared_config = shared_config.endpoint_url(&storage.endpoint_url);
+        }
 
-        let s3_config = aws_sdk_s3::config::Builder::from(&shared_config)
-            .endpoint_resolver(endpoint);
+        let shared_config = shared_config.build();
 
-        Ok(Client::new(s3_config.build()))
+        Ok(Client::new(&shared_config))
+    }
+
+    fn get_storage_config(&self) -> Option<&StorageConfig> {
+        self.config.storage.as_ref()
     }
 
     pub fn get_system_path(&self) -> Option<S3Path> {
-        self.config.storage_url.as_ref().map(|url| S3Path::new(url))
+        self.get_storage_config().map(|storage| S3Path::new(&storage.url))
     }
 
     pub fn get_application_path(&self) -> Option<S3Path> {
+        let app_id = &self.config.application_info.application_id;
         self.get_system_path()
-            .map(|path| path.join(&self.config.application_id))
+            .map(|path| path.join(app_id))
     }
 
     pub fn get_deployed_application_path(&self) -> Option<S3Path> {
+        let deployed_id = &self.config.application_info.deployed_application_id;
         self.get_system_path()
-            .map(|path| path.join(&self.config.deployed_application_id))
+            .map(|path| path.join(deployed_id))
     }
 }

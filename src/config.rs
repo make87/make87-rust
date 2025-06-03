@@ -26,35 +26,27 @@ pub fn load_config_from_json<T: AsRef<str>>(json_data: T) -> Result<ApplicationC
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ApplicationConfig, MountedPeripherals, URLMapping};
+    use crate::models::{ApplicationEnvConfig, ApplicationInfo, MountedPeripherals};
     use serde_json::Value;
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
     use std::env;
 
-    fn default_app_config() -> ApplicationConfig {
-        ApplicationConfig {
-            topics: vec![],
-            endpoints: vec![],
-            services: vec![],
-            url_mapping: URLMapping { name_to_url: HashMap::new() },
+    fn default_app_config() -> ApplicationEnvConfig {
+        ApplicationEnvConfig {
+            interfaces: BTreeMap::new(),
             peripherals: MountedPeripherals { peripherals: vec![] },
             config: Value::Null,
-            entrypoint_name: None,
-            deployed_application_id: "id1".into(),
-            system_id: "sysid".into(),
-            deployed_application_name: "app".into(),
-            is_release_version: true,
-            public_ip: None,
-            vpn_ip: "10.0.0.1".into(),
-            port_config: vec![],
-            git_url: None,
-            git_branch: None,
-            application_id: "appid".into(),
-            application_name: "myapp".into(),
-            storage_url: None,
-            storage_endpoint_url: None,
-            storage_access_key: None,
-            storage_secret_key: None,
+            storage: None,
+            application_info: ApplicationInfo {
+                deployed_application_id: "id1".into(),
+                deployed_application_name: "app".into(),
+                system_id: "sysid".into(),
+                application_id: "appid".into(),
+                application_name: "myapp".into(),
+                git_url: None,
+                git_branch: None,
+                is_release_version: true,
+            },
         }
     }
 
@@ -65,7 +57,7 @@ mod tests {
         let result = load_config_from_json(&json);
         assert!(result.is_ok());
         let loaded = result.unwrap();
-        assert_eq!(loaded.deployed_application_id, config.deployed_application_id);
+        assert_eq!(loaded.application_info.deployed_application_id, config.application_info.deployed_application_id);
     }
 
     #[test]
@@ -84,7 +76,7 @@ mod tests {
         let result = load_config_from_env(var);
         assert!(result.is_ok());
         let loaded = result.unwrap();
-        assert_eq!(loaded.system_id, config.system_id);
+        assert_eq!(loaded.application_info.system_id, config.application_info.system_id);
         unsafe { env::remove_var(var); }
     }
 

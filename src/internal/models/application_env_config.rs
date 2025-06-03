@@ -1,314 +1,83 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::{BTreeMap, HashMap};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
-fn default_interface_name() -> String {
-    "zenoh".to_string()
-}
+pub const CURRENT_CONFIG_VERSION: &str = "1.0.0";
 
-fn default_protocol() -> String {
-    "zenoh".to_string()
-}
-
-
-fn default_encoding() -> Option<String> {
-    Some("proto".to_string())
-}
-
-
-fn default_publish_mode() -> PublishMode {
-    PublishMode::Ingress
-}
-
-fn default_port_protocol() -> ProtocolEnum {
-    ProtocolEnum::TCP
-}
-
-fn default_is_system_interface() -> bool {
-    false
-}
-
-pub fn deserialize_u16_from_i32<'de, D>(deserializer: D) -> Result<u16, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value: i32 = Deserialize::deserialize(deserializer)?;
-    u16::try_from(value).map_err(serde::de::Error::custom)
-}
-
-pub fn serialize_u16_as_i32<S>(value: &u16, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_i32(*value as i32)
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MappedURL {
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AccessPoint {
     pub vpn_ip: String,
     pub vpn_port: u16,
     pub public_ip: Option<String>,
     pub public_port: Option<u16>,
+    pub same_node: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct URLMapping {
-    pub name_to_url: HashMap<String, MappedURL>,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BoundSubscriber {
+    #[serde(flatten)]
+    pub access_point: AccessPoint,
+    #[serde(flatten)]
+    pub config: SubscriberTopicConfig,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ApplicationEnvConfig {
-    pub topics: Vec<TopicConfig>,
-    pub endpoints: Vec<EndpointConfig>,
-    pub services: Vec<ServiceConfig>,
-    pub url_mapping: URLMapping,
-    pub peripherals: MountedPeripherals,
-    pub config: Value,
-    pub entrypoint_name: Option<String>,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BoundRequester {
+    #[serde(flatten)]
+    pub access_point: AccessPoint,
+    #[serde(flatten)]
+    pub config: RequesterEndpointConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BoundClient {
+    #[serde(flatten)]
+    pub access_point: AccessPoint,
+    #[serde(flatten)]
+    pub config: ClientServiceConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct InterfaceConfig {
+    pub name: String,
+    pub publishers: BTreeMap<String, PublisherTopicConfig>,
+    pub subscribers: BTreeMap<String, BoundSubscriber>,
+    pub requesters: BTreeMap<String, BoundRequester>,
+    pub providers: BTreeMap<String, ProviderEndpointConfig>,
+    pub clients: BTreeMap<String, BoundClient>,
+    pub servers: BTreeMap<String, ServerServiceConfig>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct StorageConfig {
+    pub url: String,
+    pub endpoint_url: String,
+    pub access_key: String,
+    pub secret_key: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ApplicationInfo {
     pub deployed_application_id: String,
-    pub system_id: String,
     pub deployed_application_name: String,
-    pub is_release_version: bool,
-    pub public_ip: Option<String>,
-    pub vpn_ip: String,
-    pub port_config: Vec<PortConfig>,
-    pub git_url: Option<String>,
-    pub git_branch: Option<String>,
+    pub system_id: String,
     pub application_id: String,
     pub application_name: String,
-    pub storage_url: Option<String>,
-    pub storage_endpoint_url: Option<String>,
-    pub storage_access_key: Option<String>,
-    pub storage_secret_key: Option<String>,
+    pub git_url: Option<String>,
+    pub git_branch: Option<String>,
+    pub is_release_version: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Hash)]
-#[serde(tag = "topic_type")]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum TopicConfig {
-    Pub {
-        topic_name: String,
-        topic_key: String,
-        message_type: String,
-        #[serde(default = "default_interface_name")]
-        interface_name: String,
-        #[serde(flatten)]
-        config: BTreeMap<String, Value>,
-        #[serde(default = "default_protocol")]
-        protocol: String,
-        #[serde(default = "default_encoding")]
-        encoding: Option<String>,
-    },
-    Sub {
-        topic_name: String,
-        topic_key: String,
-        message_type: String,
-        #[serde(default = "default_interface_name")]
-        interface_name: String,
-
-        #[serde(flatten)]
-        config: BTreeMap<String, Value>,
-        #[serde(default = "default_protocol")]
-        protocol: String,
-        #[serde(default = "default_encoding")]
-        encoding: Option<String>,
-    },
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ApplicationEnvConfig {
+    pub interfaces: BTreeMap<String, InterfaceConfig>,
+    pub peripherals: MountedPeripherals,
+    pub config: Value,
+    pub storage: Option<StorageConfig>,
+    pub application_info: ApplicationInfo,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Hash)]
-#[serde(tag = "endpoint_type")]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum EndpointConfig {
-    Req {
-        endpoint_name: String,
-        endpoint_key: String,
-        requester_message_type: String,
-        provider_message_type: String,
-        #[serde(default = "default_interface_name")]
-        interface_name: String,
-
-        #[serde(flatten)]
-        config: BTreeMap<String, Value>,
-
-        #[serde(default = "default_protocol")]
-        protocol: String,
-        #[serde(default = "default_encoding")]
-        encoding: Option<String>,
-    },
-    Prv {
-        endpoint_name: String,
-        endpoint_key: String,
-        requester_message_type: String,
-        provider_message_type: String,
-        #[serde(default = "default_interface_name")]
-        interface_name: String,
-
-        #[serde(flatten)]
-        config: BTreeMap<String, Value>,
-
-        #[serde(default = "default_protocol")]
-        protocol: String,
-        #[serde(default = "default_encoding")]
-        encoding: Option<String>,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
-#[serde(tag = "service_type")]
-pub enum ServiceConfig {
-    /// The service is a client
-    Client {
-        name: String,
-        spec: String,
-        key: String,
-        #[serde(default = "default_interface_name")]
-        interface_name: String,
-
-        #[serde(flatten)]
-        config: BTreeMap<String, Value>,
-        #[serde(default = "default_protocol")]
-        protocol: String,
-    },
-    /// The service is a server
-    Server {
-        name: String,
-        key: String,
-        spec: String,
-        #[serde(default = "default_interface_name")]
-        interface_name: String,
-
-        #[serde(flatten)]
-        config: BTreeMap<String, Value>,
-        #[serde(default = "default_protocol")]
-        protocol: String,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MountedPeripherals {
-    pub peripherals: Vec<MountedPeripheral>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
-pub struct MountedPeripheral {
-    /// The name of the peripheral. That is used by the application version to identify the peripheral
-    pub name: String,
-    pub peripheral: Peripheral,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum Peripheral {
-    GPU(GpuPeripheral),
-    I2C(I2cPeripheral),
-    GPIO(GpioPeripheral),
-    Camera(CameraPeripheral),
-    RealSense(RealSenseCameraPeripheral),
-    ISP(IspPeripheral),
-    Codec(CodecPeripheral),
-    Rendering(RenderingPeripheral),
-    Speaker(OtherPeripheral),
-    Keyboard(OtherPeripheral),
-    Mouse(OtherPeripheral),
-    GenericDevice(GenericDevicePeripheral),
-    Other(OtherPeripheral),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct GpuPeripheral {
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub model: String,
-    pub index: Option<u32>,
-    pub device_nodes: Vec<String>,
-    pub vram: Option<u32>, // VRAM in MB
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct I2cPeripheral {
-    pub peripheral_type: PeripheralType,
-    pub bus_number: u32,
-    pub name: String,
-    pub device_nodes: Vec<String>,
-    pub detected_devices: Vec<I2cDetectedDevice>,
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct GpioPeripheral {
-    pub peripheral_type: PeripheralType,
-    pub chip_name: String,
-    pub label: String,
-    pub num_lines: u32,
-    pub device_nodes: Vec<String>,
-    pub lines: Vec<GpioLineInfo>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct CameraPeripheral {
-    pub reference: String,
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub device_nodes: Vec<String>,
-    pub volumes: Vec<(String, String)>, // Additional volumes to mount
-    #[serde(default)]
-    pub camera_type: Option<String>,
-    #[serde(default)]
-    pub protocol: Option<String>,
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct RealSenseCameraPeripheral {
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub device_nodes: Vec<String>, // All device nodes to mount
-    // pub primary_device_nodes: Vec<String>, // Primary device nodes (could be multiple)
-    pub serial_number: String, // Serial number of the camera
-    pub model: String,         // Model name
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct IspPeripheral {
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub supported_features: Vec<String>, // Features like "denoise", "scale", etc.
-    pub device_nodes: Vec<String>,       // Device nodes like /dev/video13
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct CodecPeripheral {
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub supported_codecs: Vec<String>, // Codec types like "H.264", "H.265", etc.
-    pub device_nodes: Vec<String>,     // Device nodes like /dev/video10
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct RenderingPeripheral {
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub supported_apis: Vec<String>,  // APIs like "OpenGL", "Vulkan"
-    pub max_performance: Option<u32>, // Optional performance metric (e.g., FLOPS)
-    pub device_nodes: Vec<String>,    // Relevant device nodes
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct OtherPeripheral {
-    pub reference: String,
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub device_nodes: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct GenericDevicePeripheral {
-    pub peripheral_type: PeripheralType,
-    pub name: String,
-    pub device_node: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum PeripheralType {
     Camera,
     RealSense,
@@ -326,14 +95,51 @@ pub enum PeripheralType {
     Other(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GpuPeripheral {
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    pub model: String,
+    pub index: Option<u32>,
+    pub device_nodes: Vec<String>,
+    pub vram: Option<u32>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GenericDevicePeripheral {
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    pub device_node: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GenericDeviceConstraints {
+    #[serde(default)]
+    pub path_prefix: Option<String>,
+    #[serde(default)]
+    pub path_suffix: Option<String>,
+    #[serde(default)]
+    pub contains: Option<Vec<String>>,
+    #[serde(default)]
+    pub contains_not: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct I2cDetectedDevice {
     pub address: String,
     pub description: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct I2cPeripheral {
+    pub peripheral_type: PeripheralType,
+    pub bus_number: u32,
+    pub name: String,
+    pub device_nodes: Vec<String>,
+    pub detected_devices: Vec<I2cDetectedDevice>,
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GpioLineInfo {
     pub line_offset: u32,
     pub name: Option<String>,
@@ -343,50 +149,238 @@ pub struct GpioLineInfo {
     pub used: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GpioPeripheral {
+    pub peripheral_type: PeripheralType,
+    pub chip_name: String,
+    pub label: String,
+    pub num_lines: u32,
+    pub device_nodes: Vec<String>,
+    pub lines: Vec<GpioLineInfo>,
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
-pub struct PortConfig {
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CameraPeripheral {
+    pub reference: String,
+    pub peripheral_type: PeripheralType,
     pub name: String,
-    #[serde(default = "default_port_protocol")]
-    pub protocol: ProtocolEnum,
-
-    /// The port inside the container.
-    #[serde(
-        deserialize_with = "deserialize_u16_from_i32",
-        serialize_with = "serialize_u16_as_i32"
-    )]
-    pub target_port: u16,
-
-    /// The port on the swarm hosts.
-    #[serde(
-        deserialize_with = "deserialize_u16_from_i32",
-        serialize_with = "serialize_u16_as_i32"
-    )]
-    pub published_port: u16,
-    #[serde(default = "default_publish_mode")]
-    pub publish_mode: PublishMode,
-    #[serde(default = "default_is_system_interface")]
-    pub is_system_interface: bool,
+    pub device_nodes: Vec<String>,
+    pub volumes: Vec<(String, String)>,
+    #[serde(default)]
+    pub camera_type: Option<String>,
+    #[serde(default)]
+    pub protocol: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub enum ProtocolEnum {
-    TCP,
-    UDP,
-    SCTP,
-    HTTP,
-    WS,
-    SSH,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CameraConstraints {
+    #[serde(default)]
+    pub camera_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub protocols: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub enum PublishMode {
-    Ingress,
-    Host,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RealSenseCameraPeripheral {
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    pub device_nodes: Vec<String>,
+    pub serial_number: String,
+    pub model: String,
 }
 
-impl Default for PublishMode {
-    fn default() -> Self {
-        PublishMode::Ingress
-    }
+#[derive(Serialize, Deserialize, Clone)]
+pub struct IspPeripheral {
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    pub supported_features: Vec<String>,
+    pub device_nodes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CodecPeripheral {
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    pub supported_codecs: Vec<String>,
+    pub device_nodes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RenderingPeripheral {
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    pub supported_apis: Vec<String>,
+    pub max_performance: Option<u32>,
+    pub device_nodes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OtherPeripheral {
+    pub reference: String,
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    pub device_nodes: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Peripheral {
+    GPU(GpuPeripheral),
+    I2C(I2cPeripheral),
+    GPIO(GpioPeripheral),
+    Camera(CameraPeripheral),
+    RealSense(RealSenseCameraPeripheral),
+    ISP(IspPeripheral),
+    Codec(CodecPeripheral),
+    Rendering(RenderingPeripheral),
+    Speaker(OtherPeripheral),
+    Keyboard(OtherPeripheral),
+    Mouse(OtherPeripheral),
+    GenericDevice(GenericDevicePeripheral),
+    Other(OtherPeripheral),
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GpuConstraints {
+    #[serde(default)]
+    pub min_vram: Option<u32>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub min_driver_version: Option<String>,
+    #[serde(default)]
+    pub min_cuda_version: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "type")]
+pub enum PeripheralConstraints {
+    GPU(GpuConstraints),
+    Camera(CameraConstraints),
+    GenericDevice(GenericDeviceConstraints),
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PeripheralRequirement {
+    pub peripheral_type: PeripheralType,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub constraints: Option<PeripheralConstraints>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MountedPeripheral {
+    pub name: String,
+    pub peripheral: Peripheral,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MountedPeripherals {
+    pub peripherals: Vec<MountedPeripheral>,
+}
+
+fn default_interface_name() -> String {
+    "zenoh".to_string()
+}
+
+fn default_protocol() -> String {
+    "zenoh".to_string()
+}
+
+fn default_encoding() -> Option<String> {
+    Some("proto".to_string())
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PublisherTopicConfig {
+    pub topic_name: String,
+    pub topic_key: String,
+    pub message_type: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_encoding")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SubscriberTopicConfig {
+    pub topic_name: String,
+    pub topic_key: String,
+    pub message_type: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_encoding")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RequesterEndpointConfig {
+    pub endpoint_name: String,
+    pub endpoint_key: String,
+    pub requester_message_type: String,
+    pub provider_message_type: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_encoding")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ProviderEndpointConfig {
+    pub endpoint_name: String,
+    pub endpoint_key: String,
+    pub requester_message_type: String,
+    pub provider_message_type: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_encoding")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum RestartPolicy {
+    Always,
+    OnFailure,
+    Never,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ClientServiceConfig {
+    pub name: String,
+    pub spec: String,
+    pub key: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ServerServiceConfig {
+    pub name: String,
+    pub key: String,
+    pub spec: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
 }

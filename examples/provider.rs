@@ -39,7 +39,7 @@ macro_rules! recv_and_reply {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let zenoh_interface = ZenohInterface::from_default_env()?;
+    let zenoh_interface = ZenohInterface::from_default_env("zenoh")?;
     let session = zenoh_interface.get_session().await?;
 
     let configured_provider = zenoh_interface

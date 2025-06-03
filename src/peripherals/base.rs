@@ -85,21 +85,19 @@ fn create_peripheral_from_model(mp: &PeripheralModel) -> Peripheral {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ApplicationConfig, MountedPeripherals, MountedPeripheral, PeripheralType, CameraPeripheral as CameraPeripheralModel, URLMapping};
-    use std::collections::HashMap;
+    use crate::models::{ApplicationEnvConfig, ApplicationInfo, MountedPeripherals, MountedPeripheral, PeripheralType, CameraPeripheral};
+    use crate::models::Peripheral as PeripheralModel;
+    use std::collections::BTreeMap;
     use serde_json::Value;
 
-    fn make_test_config() -> ApplicationConfig {
-        ApplicationConfig {
-            topics: vec![],
-            endpoints: vec![],
-            services: vec![],
-            url_mapping: URLMapping { name_to_url: HashMap::new() },
+    fn make_test_config() -> ApplicationEnvConfig {
+        ApplicationEnvConfig {
+            interfaces: BTreeMap::new(),
             peripherals: MountedPeripherals {
                 peripherals: vec![
                     MountedPeripheral {
                         name: "cam1".to_string(),
-                        peripheral: PeripheralModel::Camera(CameraPeripheralModel {
+                        peripheral: PeripheralModel::Camera(CameraPeripheral {
                             reference: "ref1".to_string(),
                             peripheral_type: PeripheralType::Camera,
                             name: "cam1".to_string(),
@@ -111,23 +109,18 @@ mod tests {
                     }
                 ]
             },
-            config: Value::Null,
-            entrypoint_name: None,
-            deployed_application_id: "id1".into(),
-            system_id: "sysid".into(),
-            deployed_application_name: "app".into(),
-            is_release_version: true,
-            public_ip: None,
-            vpn_ip: "10.0.0.1".into(),
-            port_config: vec![],
-            git_url: None,
-            git_branch: None,
-            application_id: "appid".into(),
-            application_name: "myapp".into(),
-            storage_url: None,
-            storage_endpoint_url: None,
-            storage_access_key: None,
-            storage_secret_key: None,
+            config: Value::default(),
+            storage: None,
+            application_info: ApplicationInfo {
+                deployed_application_id: "id1".into(),
+                deployed_application_name: "app".into(),
+                system_id: "sysid".into(),
+                application_id: "appid".into(),
+                application_name: "myapp".into(),
+                git_url: None,
+                git_branch: None,
+                is_release_version: true,
+            },
         }
     }
 
