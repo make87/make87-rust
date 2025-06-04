@@ -24,7 +24,7 @@ macro_rules! recv_and_reply {
                         header: Header {
                             timestamp: Timestamp::get_current_time().into(),
                             entity_path: msg.header.as_ref().unwrap().entity_path.clone(),
-                            reference_id: msg.header.as_ref().unwrap().reference_id.clone(),
+                            reference_id: msg.header.as_ref().unwrap().reference_id,
                         }
                         .into(),
                         body: msg.body.chars().rev().collect(),
