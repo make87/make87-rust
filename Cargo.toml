@@ -22,11 +22,9 @@ serde_yaml = {  version = "0.9.33", optional = true }
 aws-config =  { version = "1.5.18", optional = true }
 aws-sdk-s3 = { version = "1.78.0", optional = true }
 aws-credential-types = { version = "1.2.3", optional = true, features = ["hardcoded-credentials"] }
-make87_messages = { version = "*", optional = true }
 
 [features]
 zenoh = ["dep:zenoh"]
 protobuf = ["dep:prost"]
 yaml = ["dep:serde_yaml"]
 storage = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-credential-types"]
-make87_messages = ["dep:make87_messages"]
