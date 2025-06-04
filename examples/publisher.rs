@@ -12,7 +12,7 @@ use make87::models::{AccessPoint, ApplicationConfig, ApplicationInfo, BoundSubsc
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let interface_name = "zenoh_test";
+    let interface_name = "zenoh";
     let topic_name = "HELLO_WORLD_MESSAGE";
     let topic_key = "my_topic_key";
 
@@ -20,12 +20,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         topic_name: topic_name.into(),
         topic_key: topic_key.into(),
         message_type: "make87_messages.text.text_plain.PlainText".into(),
-        interface_name: "zenoh".into(),
+        interface_name: interface_name.into(),
         config: BTreeMap::from([
-            ("congestion_control".to_string(), serde_json::json!("Drop")),
-            ("priority".to_string(), serde_json::json!("Data")),
+            ("congestion_control".to_string(), serde_json::json!("DROP")),
+            ("priority".to_string(), serde_json::json!("DATA")),
             ("express".to_string(), serde_json::json!(true)),
-            ("reliability".to_string(), serde_json::json!("Reliable")),
+            ("reliability".to_string(), serde_json::json!("RELIABLE")),
         ]),
         protocol: "zenoh".into(),
         encoding: Some("proto".into()),

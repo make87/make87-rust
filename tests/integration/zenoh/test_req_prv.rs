@@ -5,8 +5,8 @@ use std::time::Duration;
 
 // You must import or define your ApplicationConfig etc here!
 use make87::models::{
-    AccessPoint, ApplicationConfig, ApplicationInfo, BoundSubscriber, InterfaceConfig,
-    MountedPeripherals, PublisherTopicConfig, SubscriberTopicConfig,
+    AccessPoint, ApplicationConfig, ApplicationInfo, BoundRequester, InterfaceConfig,
+    MountedPeripherals, ProviderEndpointConfig, RequesterEndpointConfig,
 };
 
 /// Helper to start a subprocess with given env and binary path.
@@ -19,30 +19,32 @@ fn spawn_with_env(bin_path: &str, config_json: &str) -> Child {
         .expect("Failed to spawn process")
 }
 
-/// Test publisher/subscriber integration.
+/// Test requester/provider integration.
 #[test]
-fn test_pub_sub_defaults_only() {
+fn test_req_prv_defaults_only() {
     // 1. Build config objects (minimal example)
     let interface_name = "zenoh_test";
-    let topic_name = "HELLO_WORLD_MESSAGE";
-    let topic_key = "my_topic_key";
+    let endpoint_name = "HELLO_WORLD_MESSAGE";
+    let endpoint_key = "my_topic_key";
 
-    let publisher_config_partial = PublisherTopicConfig {
-        topic_name: topic_name.into(),
-        topic_key: topic_key.into(),
-        message_type: "make87_messages.text.text_plain.PlainText".into(),
+    let provider_config_partial = ProviderEndpointConfig {
+        endpoint_name: endpoint_name.into(),
+        endpoint_key: endpoint_key.into(),
+        provider_message_type: "make87_messages.text.text_plain.PlainText".into(),
+        requester_message_type: "make87_messages.text.text_plain.PlainText".into(),
         interface_name: "zenoh".into(),
-        config: BTreeMap::from([
-            ("congestion_control".to_string(), serde_json::json!("Drop")),
-            ("priority".to_string(), serde_json::json!("Data")),
-            ("express".to_string(), serde_json::json!(true)),
-            ("reliability".to_string(), serde_json::json!("Reliable")),
-        ]),
         protocol: "zenoh".into(),
         encoding: Some("proto".into()),
+        config: BTreeMap::from([(
+            "handler".to_string(),
+            serde_json::json!({
+                "handler_type": "FIFO",
+                "capacity": 100
+            }),
+        )]),
     };
 
-    let subscriber_config_partial = BoundSubscriber {
+    let requester_config_partial = BoundRequester {
         access_point: AccessPoint {
             vpn_ip: "127.0.0.1".to_string(),
             vpn_port: 7447,
@@ -50,20 +52,19 @@ fn test_pub_sub_defaults_only() {
             public_port: None,
             same_node: true,
         },
-        config: SubscriberTopicConfig {
-            topic_name: topic_name.into(),
-            topic_key: topic_key.into(),
-            message_type: "make87_messages.text.text_plain.PlainText".into(),
+        config: RequesterEndpointConfig {
+            endpoint_name: endpoint_name.into(),
+            endpoint_key: endpoint_key.into(),
+            requester_message_type: "make87_messages.text.text_plain.PlainText".into(),
+            provider_message_type: "make87_messages.text.text_plain.PlainText".into(),
             interface_name: "zenoh".into(),
             protocol: "zenoh".into(),
             encoding: Some("proto".into()),
-            config: BTreeMap::from([(
-                "handler".to_string(),
-                serde_json::json!({
-                    "handler_type": "FIFO",
-                    "capacity": 100
-                }),
-            )]),
+            config: BTreeMap::from([
+                ("congestion_control".to_string(), serde_json::json!("Drop")),
+                ("priority".to_string(), serde_json::json!("Data")),
+                ("express".to_string(), serde_json::json!(true)),
+            ]),
         },
     };
 
@@ -97,49 +98,48 @@ fn test_pub_sub_defaults_only() {
         },
     };
 
-    let mut publisher_config = config.clone();
-    publisher_config
+    let mut provider_config = config.clone();
+    provider_config
         .interfaces
         .get_mut(interface_name)
         .unwrap()
-        .publishers
-        .insert(topic_name.into(), publisher_config_partial);
+        .providers
+        .insert(endpoint_name.into(), provider_config_partial);
 
-    let mut subscriber_config = config.clone();
-    subscriber_config
+    let mut requester_config = config.clone();
+    requester_config
         .interfaces
         .get_mut(interface_name)
         .unwrap()
-        .subscribers
-        .insert(topic_name.into(), subscriber_config_partial);
+        .requesters
+        .insert(endpoint_name.into(), requester_config_partial);
 
-    let subscriber_config_json = serde_json::to_string(&subscriber_config).unwrap();
-    let publisher_config_json = serde_json::to_string(&publisher_config).unwrap();
+    let provider_config_json = serde_json::to_string(&provider_config).unwrap();
+    let requester_config_json = serde_json::to_string(&requester_config).unwrap();
 
-    // 2. Find your publisher and subscriber binaries
-    // When run via `cargo test`, your binaries will be at target/debug/examples/<bin-name>
+    // 2. Find your requester and provider binaries
     let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
     let debug_examples = format!("{}/debug/examples", target_dir);
-    let publisher_bin = std::path::Path::new(&debug_examples).join("publisher");
-    let subscriber_bin = std::path::Path::new(&debug_examples).join("subscriber");
+    let provider_bin = std::path::Path::new(&debug_examples).join("provider");
+    let requester_bin = std::path::Path::new(&debug_examples).join("requester");
 
-    // 3. Start subscriber first
-    let mut sub_proc = spawn_with_env(subscriber_bin.to_str().unwrap(), &subscriber_config_json);
-    sleep(Duration::from_secs(1)); // Give subscriber time to start
+    // 3. Start provider first
+    let mut prv_proc = spawn_with_env(provider_bin.to_str().unwrap(), &provider_config_json);
+    sleep(Duration::from_secs(1)); // Give provider time to start
 
-    // 4. Start publisher
-    let mut pub_proc = spawn_with_env(publisher_bin.to_str().unwrap(), &publisher_config_json);
-    sleep(Duration::from_secs(1)); // Allow pub/sub to communicate
+    // 4. Start requester
+    let mut req_proc = spawn_with_env(requester_bin.to_str().unwrap(), &requester_config_json);
+    sleep(Duration::from_secs(1)); // Allow req/prv to communicate
 
     // 5. Terminate both (clean shutdown, or let them exit naturally)
-    pub_proc.kill().ok();
-    let _ = pub_proc.wait();
-
-    sub_proc.kill().ok();
-    let output = sub_proc
+    req_proc.kill().ok();
+    let output = req_proc
         .wait_with_output()
-        .expect("Failed to wait on subscriber");
+        .expect("Failed to wait on requester");
     let stdout = String::from_utf8_lossy(&output.stdout);
+
+    prv_proc.kill().ok();
+    let _ = prv_proc.wait();
 
     // 6. Check output
     assert!(stdout.to_lowercase().contains("olleh"));
