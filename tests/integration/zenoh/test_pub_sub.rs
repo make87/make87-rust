@@ -23,7 +23,7 @@ fn spawn_with_env(bin_path: &str, config_json: &str) -> Child {
 #[test]
 fn test_pub_sub_defaults_only() {
     // 1. Build config objects (minimal example)
-    let interface_name = "zenoh_test";
+    let interface_name = "zenoh";
     let topic_name = "HELLO_WORLD_MESSAGE";
     let topic_key = "my_topic_key";
 
@@ -31,12 +31,12 @@ fn test_pub_sub_defaults_only() {
         topic_name: topic_name.into(),
         topic_key: topic_key.into(),
         message_type: "make87_messages.text.text_plain.PlainText".into(),
-        interface_name: "zenoh".into(),
+        interface_name: interface_name.into(),
         config: BTreeMap::from([
-            ("congestion_control".to_string(), serde_json::json!("Drop")),
-            ("priority".to_string(), serde_json::json!("Data")),
+            ("congestion_control".to_string(), serde_json::json!("DROP")),
+            ("priority".to_string(), serde_json::json!("DATA")),
             ("express".to_string(), serde_json::json!(true)),
-            ("reliability".to_string(), serde_json::json!("Reliable")),
+            ("reliability".to_string(), serde_json::json!("RELIABLE")),
         ]),
         protocol: "zenoh".into(),
         encoding: Some("proto".into()),
@@ -54,7 +54,7 @@ fn test_pub_sub_defaults_only() {
             topic_name: topic_name.into(),
             topic_key: topic_key.into(),
             message_type: "make87_messages.text.text_plain.PlainText".into(),
-            interface_name: "zenoh".into(),
+            interface_name: interface_name.into(),
             protocol: "zenoh".into(),
             encoding: Some("proto".into()),
             config: BTreeMap::from([(
@@ -133,15 +133,23 @@ fn test_pub_sub_defaults_only() {
 
     // 5. Terminate both (clean shutdown, or let them exit naturally)
     pub_proc.kill().ok();
-    let _ = pub_proc.wait();
+    let pub_output = pub_proc.wait_with_output().expect("Failed to wait on publisher");
+    let pub_stdout = String::from_utf8_lossy(&pub_output.stdout);
+    let pub_stderr = String::from_utf8_lossy(&pub_output.stderr);
 
     sub_proc.kill().ok();
-    let output = sub_proc
+    let sub_output = sub_proc
         .wait_with_output()
         .expect("Failed to wait on subscriber");
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let sub_stdout = String::from_utf8_lossy(&sub_output.stdout);
+    let sub_stderr = String::from_utf8_lossy(&sub_output.stderr);
+
+    println!("Publisher stdout:\n{}", pub_stdout);
+    println!("Publisher stderr:\n{}", pub_stderr);
+    println!("Subscriber stdout:\n{}", sub_stdout);
+    println!("Subscriber stderr:\n{}", sub_stderr);
 
     // 6. Check output
-    assert!(stdout.to_lowercase().contains("olleh"));
-    assert!(stdout.to_lowercase().contains("dlrow"));
+    assert!(sub_stdout.to_lowercase().contains("hello"));
+    assert!(sub_stdout.to_lowercase().contains("world"));
 }

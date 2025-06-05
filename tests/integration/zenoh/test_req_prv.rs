@@ -23,7 +23,7 @@ fn spawn_with_env(bin_path: &str, config_json: &str) -> Child {
 #[test]
 fn test_req_prv_defaults_only() {
     // 1. Build config objects (minimal example)
-    let interface_name = "zenoh_test";
+    let interface_name = "zenoh";
     let endpoint_name = "HELLO_WORLD_MESSAGE";
     let endpoint_key = "my_topic_key";
 
@@ -32,14 +32,14 @@ fn test_req_prv_defaults_only() {
         endpoint_key: endpoint_key.into(),
         provider_message_type: "make87_messages.text.text_plain.PlainText".into(),
         requester_message_type: "make87_messages.text.text_plain.PlainText".into(),
-        interface_name: "zenoh".into(),
+        interface_name: interface_name.into(),
         protocol: "zenoh".into(),
         encoding: Some("proto".into()),
         config: BTreeMap::from([(
             "handler".to_string(),
             serde_json::json!({
-                "handler_type": "FIFO",
-                "capacity": 100
+                "handler_type": "RING",
+                "capacity": 10
             }),
         )]),
     };
@@ -57,12 +57,12 @@ fn test_req_prv_defaults_only() {
             endpoint_key: endpoint_key.into(),
             requester_message_type: "make87_messages.text.text_plain.PlainText".into(),
             provider_message_type: "make87_messages.text.text_plain.PlainText".into(),
-            interface_name: "zenoh".into(),
+            interface_name: interface_name.into(),
             protocol: "zenoh".into(),
             encoding: Some("proto".into()),
             config: BTreeMap::from([
-                ("congestion_control".to_string(), serde_json::json!("Drop")),
-                ("priority".to_string(), serde_json::json!("Data")),
+                ("congestion_control".to_string(), serde_json::json!("DROP")),
+                ("priority".to_string(), serde_json::json!("DATA")),
                 ("express".to_string(), serde_json::json!(true)),
             ]),
         },
@@ -133,15 +133,23 @@ fn test_req_prv_defaults_only() {
 
     // 5. Terminate both (clean shutdown, or let them exit naturally)
     req_proc.kill().ok();
-    let output = req_proc
+    let req_output = req_proc
         .wait_with_output()
         .expect("Failed to wait on requester");
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let req_stdout = String::from_utf8_lossy(&req_output.stdout);
+    let req_stderr = String::from_utf8_lossy(&req_output.stderr);
 
     prv_proc.kill().ok();
-    let _ = prv_proc.wait();
+    let prv_output = prv_proc.wait_with_output().expect("Failed to wait on provider");
+    let prv_stdout = String::from_utf8_lossy(&prv_output.stdout);
+    let prv_stderr = String::from_utf8_lossy(&prv_output.stderr);
+
+    println!("Requester stdout:\n{}", req_stdout);
+    println!("Requester stderr:\n{}", req_stderr);
+    println!("Provider stdout:\n{}", prv_stdout);
+    println!("Provider stderr:\n{}", prv_stderr);
 
     // 6. Check output
-    assert!(stdout.to_lowercase().contains("olleh"));
-    assert!(stdout.to_lowercase().contains("dlrow"));
+    assert!(req_stdout.to_lowercase().contains("olleh"));
+    assert!(req_stdout.to_lowercase().contains("dlrow"));
 }

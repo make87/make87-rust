@@ -44,67 +44,7 @@ macro_rules! recv_and_reply {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    // 1. Build config objects (minimal example)
-    let interface_name = "zenoh";
-    let endpoint_name = "HELLO_WORLD_MESSAGE";
-    let endpoint_key = "my_topic_key";
-
-    let provider_config_partial = ProviderEndpointConfig {
-        endpoint_name: endpoint_name.into(),
-        endpoint_key: endpoint_key.into(),
-        provider_message_type: "make87_messages.text.text_plain.PlainText".into(),
-        requester_message_type: "make87_messages.text.text_plain.PlainText".into(),
-        interface_name: interface_name.into(),
-        protocol: "zenoh".into(),
-        encoding: Some("proto".into()),
-        config: BTreeMap::from([(
-            "handler".to_string(),
-            serde_json::json!({
-                "handler_type": "FIFO",
-                "capacity": 100
-            }),
-        )]),
-    };
-
-    let config = ApplicationConfig {
-        interfaces: BTreeMap::from([(
-            interface_name.into(),
-            InterfaceConfig {
-                name: interface_name.into(),
-                publishers: Default::default(),
-                subscribers: Default::default(),
-                requesters: Default::default(),
-                providers: Default::default(),
-                clients: Default::default(),
-                servers: Default::default(),
-            },
-        )]),
-        peripherals: MountedPeripherals {
-            peripherals: vec![],
-        },
-        config: serde_json::Value::Null,
-        storage: Default::default(),
-        application_info: ApplicationInfo {
-            deployed_application_id: "4408ba07-6963-4243-9572-fe7fa679784c".into(),
-            system_id: "b0e65164-f54d-4350-8e39-ea257b46cde3".into(),
-            git_url: None,
-            git_branch: None,
-            application_id: "20f6f4d4-229b-4b22-987b-e22f61713dc4".into(),
-            application_name: "pub_app".into(),
-            deployed_application_name: "pub_app_1".into(),
-            is_release_version: true,
-        },
-    };
-
-    let mut provider_config = config.clone();
-    provider_config
-        .interfaces
-        .get_mut(interface_name)
-        .unwrap()
-        .providers
-        .insert(endpoint_name.into(), provider_config_partial);
-
-    let zenoh_interface = ZenohInterface::new(provider_config, "zenoh");
+    let zenoh_interface = ZenohInterface::from_default_env("zenoh")?;
     let session = zenoh_interface.get_session().await?;
 
     let configured_provider = zenoh_interface
