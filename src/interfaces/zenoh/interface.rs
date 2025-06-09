@@ -99,14 +99,14 @@ impl ZenohInterface {
 
     pub async fn get_publisher(
         &self,
-        session: &Session,
+        session: & Session,
         name: &str,
     ) -> Result<Publisher<'_>, ZError> {
         let pub_cfg = self.get_publisher_config(name)
             .ok_or_else(|| ZenohInterfaceError::PubTopicNotFound(name.to_string()))?;
         let zenoh_config: ZenohPublisherConfig = decode_config(&pub_cfg.config)?;
         let publisher = session
-            .declare_publisher(&pub_cfg.topic_key)
+            .declare_publisher(pub_cfg.topic_key.clone())
             .congestion_control(zenoh_config.congestion_control.to_zenoh())
             .priority(zenoh_config.priority.to_zenoh())
             .express(zenoh_config.express)
@@ -126,14 +126,14 @@ impl ZenohInterface {
         match &zenoh_config.handler {
             HandlerChannel::Fifo { capacity } => {
                 let subscriber = session
-                    .declare_subscriber(&sub_cfg.config.topic_key)
+                    .declare_subscriber(sub_cfg.config.topic_key.clone())
                     .with(FifoChannel::new(*capacity as usize))
                     .await?;
                 Ok(ConfiguredSubscriber::Fifo(subscriber))
             }
             HandlerChannel::Ring { capacity } => {
                 let subscriber = session
-                    .declare_subscriber(&sub_cfg.config.topic_key)
+                    .declare_subscriber(sub_cfg.config.topic_key.clone())
                     .with(RingChannel::new(*capacity as usize))
                     .await?;
                 Ok(ConfiguredSubscriber::Ring(subscriber))
@@ -150,7 +150,7 @@ impl ZenohInterface {
         let sub_cfg = self.get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
         session
-            .declare_subscriber(&sub_cfg.config.topic_key)
+            .declare_subscriber(sub_cfg.config.topic_key.clone())
             .callback(handler)
             .await
     }
@@ -164,7 +164,7 @@ impl ZenohInterface {
         let sub_cfg = self.get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
         session
-            .declare_subscriber(&sub_cfg.config.topic_key)
+            .declare_subscriber(sub_cfg.config.topic_key.clone())
             .callback_mut(handler)
             .await
     }
@@ -178,7 +178,7 @@ impl ZenohInterface {
             .ok_or_else(|| ZenohInterfaceError::ReqEndpointNotFound(name.to_string()))?;
         let zenoh_config: ZenohRequesterConfig = decode_config(&req_cfg.config.config)?;
         let querier = session
-            .declare_querier(&req_cfg.config.endpoint_key)
+            .declare_querier(req_cfg.config.endpoint_key.clone())
             .congestion_control(zenoh_config.congestion_control.to_zenoh())
             .priority(zenoh_config.priority.to_zenoh())
             .express(zenoh_config.express)
@@ -197,14 +197,14 @@ impl ZenohInterface {
         match &zenoh_config.handler {
             HandlerChannel::Fifo { capacity } => {
                 let provider = session
-                    .declare_queryable(&prv_cfg.endpoint_key)
+                    .declare_queryable(prv_cfg.endpoint_key.clone())
                     .with(FifoChannel::new(*capacity as usize))
                     .await?;
                 Ok(ConfiguredProvider::Fifo(provider))
             }
             HandlerChannel::Ring { capacity } => {
                 let provider = session
-                    .declare_queryable(&prv_cfg.endpoint_key)
+                    .declare_queryable(prv_cfg.endpoint_key.clone())
                     .with(RingChannel::new(*capacity as usize))
                     .await?;
                 Ok(ConfiguredProvider::Ring(provider))
@@ -221,7 +221,7 @@ impl ZenohInterface {
         let prv_cfg = self.get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
         session
-            .declare_queryable(&prv_cfg.endpoint_key)
+            .declare_queryable(prv_cfg.endpoint_key.clone())
             .callback(handler)
             .await
     }
@@ -235,7 +235,7 @@ impl ZenohInterface {
         let prv_cfg = self.get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
         session
-            .declare_queryable(&prv_cfg.endpoint_key)
+            .declare_queryable(prv_cfg.endpoint_key.clone())
             .callback_mut(handler)
             .await
     }
