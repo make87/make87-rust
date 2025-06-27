@@ -9,10 +9,10 @@ pub const DEFAULT_ENV_VAR: &str = "MAKE87_CONFIG";
 
 // Recursively resolve secrets in a serde_json::Value
 fn resolve_secrets(value: Value) -> Result<Value, Box<dyn Error + Send + Sync + 'static>> {
-    // Regex: ^\s*\$\{secret\.([A-Za-z0-9_]+)\}\s*$
-    // Matches e.g. "${secret.MYSECRET}"
+    // Regex: ^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$
+    // Matches e.g. "${{ secret.MYSECRET }}" with optional spaces
     static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-        Regex::new(r"^\s*\$\{secret\.([A-Za-z0-9_]+)\}\s*$").unwrap()
+        Regex::new(r"^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$").unwrap()
     });
 
     match value {
@@ -185,14 +185,14 @@ mod tests {
             },
             "interfaces": {},
             "peripherals": {"peripherals": []},
-            "config": {"password": format!("${{secret.{}}}", secret_name)},
+            "config": {"password": format!("${{{{ secret.{} }}}}", secret_name)},
         });
 
         // Patch the secret path in the environment by temporarily replacing /run/secrets with our tempdir
         // We'll monkeypatch resolve_secrets for this test
         fn resolve_secrets_test(value: Value, secret_file: &std::path::Path) -> Value {
             static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-                Regex::new(r"^\s*\$\{secret\.([A-Za-z0-9_]+)\}\s*$").unwrap()
+                Regex::new(r"^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$").unwrap()
             });
             match value {
                 Value::Object(map) => {
@@ -221,5 +221,87 @@ mod tests {
         config.config = resolve_secrets_test(config.config, &secret_file_path);
 
         assert_eq!(config.config["password"], secret_value);
+    }
+
+    #[test]
+    fn test_secret_resolution_whitespace_variants() {
+        let tmpdir = TempDir::new().unwrap();
+        let secret_name = "MYSECRET";
+        let secret_value = "supersecret";
+        let secret_file_path = tmpdir.path().join(format!("{}.secret", secret_name));
+        {
+            let mut f = File::create(&secret_file_path).unwrap();
+            write!(f, "{}", secret_value).unwrap();
+        }
+
+        // Patch /run/secrets/MYSECRET.secret to point to our temp file using symlink if possible
+        let run_secrets = tmpdir.path().join("run_secrets");
+        std::fs::create_dir_all(&run_secrets).unwrap();
+        let symlink_path = run_secrets.join(format!("{}.secret", secret_name));
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&secret_file_path, &symlink_path).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&secret_file_path, &symlink_path).unwrap();
+
+        // Helper for whitespace variations
+        let whitespace_variants = vec![
+            format!("${{{{secret.{}}}}}", secret_name),
+            format!("${{{{ secret.{} }}}}", secret_name),
+            format!("${{{{  secret.{}  }}}}", secret_name),
+            format!("${{{{secret.{}    }}}}", secret_name),
+            format!("${{{{    secret.{} }}}}", secret_name),
+            format!("${{{{    secret.{}    }}}}", secret_name),
+            format!("  ${{{{ secret.{} }}}}  ", secret_name),
+            format!("\t${{{{ secret.{} }}}}\n", secret_name),
+        ];
+
+        for variant in whitespace_variants {
+            let config_json = serde_json::json!({
+                "application_info": {
+                    "application_id": "app-id",
+                    "application_name": "dummy",
+                    "deployed_application_id": "deploy-id",
+                    "deployed_application_name": "dummy-deploy",
+                    "is_release_version": false,
+                    "system_id": "sys-id",
+                    "version": "1.0"
+                },
+                "interfaces": {},
+                "peripherals": {"peripherals": []},
+                "config": {"password": variant},
+            });
+
+            fn resolve_secrets_test(value: Value, secret_file: &std::path::Path) -> Value {
+                static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
+                    Regex::new(r"^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$").unwrap()
+                });
+                match value {
+                    Value::Object(map) => {
+                        let mut new_map = serde_json::Map::new();
+                        for (k, v) in map {
+                            new_map.insert(k, resolve_secrets_test(v, secret_file));
+                        }
+                        Value::Object(new_map)
+                    }
+                    Value::Array(arr) => {
+                        Value::Array(arr.into_iter().map(|v| resolve_secrets_test(v, secret_file)).collect())
+                    }
+                    Value::String(s) => {
+                        if let Some(_caps) = SECRET_PATTERN.captures(&s) {
+                            let secret_value = std::fs::read_to_string(secret_file).unwrap().trim().to_owned();
+                            Value::String(secret_value)
+                        } else {
+                            Value::String(s)
+                        }
+                    }
+                    other => other,
+                }
+            }
+
+            let mut config: ApplicationConfig = serde_json::from_value(config_json).unwrap();
+            config.config = resolve_secrets_test(config.config, &secret_file_path);
+
+            assert_eq!(config.config["password"], secret_value, "Failed for variant: {:?}", config.config["password"]);
+        }
     }
 }
