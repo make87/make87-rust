@@ -99,9 +99,9 @@ impl ZenohInterface {
 
     pub async fn get_publisher(
         &self,
-        session: & Session,
+        session: &Session,
         name: &str,
-    ) -> Result<Publisher<'_>, ZError> {
+    ) -> Result<Publisher<'static>, ZError> {
         let pub_cfg = self.get_publisher_config(name)
             .ok_or_else(|| ZenohInterfaceError::PubTopicNotFound(name.to_string()))?;
         let zenoh_config: ZenohPublisherConfig = decode_config(&pub_cfg.config)?;
@@ -173,7 +173,7 @@ impl ZenohInterface {
         &self,
         session: &Session,
         name: &str,
-    ) -> Result<Querier<'_>, ZError> {
+    ) -> Result<Querier<'static>, ZError> {
         let req_cfg = self.get_requester_config(name)
             .ok_or_else(|| ZenohInterfaceError::ReqEndpointNotFound(name.to_string()))?;
         let zenoh_config: ZenohRequesterConfig = decode_config(&req_cfg.config.config)?;
