@@ -7,14 +7,14 @@ use crate::models::ApplicationConfig;
 
 pub const DEFAULT_ENV_VAR: &str = "MAKE87_CONFIG";
 
+// Make the regex static and pub(crate) so tests can use it
+pub(crate) static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
+    Regex::new(r"^\s*\{\{\s*secret\.([A-Za-z0-9_]+)\s*}}\s*$").unwrap()
+});
+
 // Recursively resolve secrets in a serde_json::Value
 fn resolve_secrets(value: Value) -> Result<Value, Box<dyn Error + Send + Sync + 'static>> {
-    // Regex: ^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$
-    // Matches e.g. "${{ secret.MYSECRET }}" with optional spaces
-    static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-        Regex::new(r"^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$").unwrap()
-    });
-
+    // Use the shared static regex
     match value {
         Value::Object(map) => {
             let mut new_map = serde_json::Map::new();
@@ -185,15 +185,13 @@ mod tests {
             },
             "interfaces": {},
             "peripherals": {"peripherals": []},
-            "config": {"password": format!("${{{{ secret.{} }}}}", secret_name)},
+            "config": {"password": format!("{{{{ secret.{} }}}}", secret_name)},
         });
 
         // Patch the secret path in the environment by temporarily replacing /run/secrets with our tempdir
         // We'll monkeypatch resolve_secrets for this test
         fn resolve_secrets_test(value: Value, secret_file: &std::path::Path) -> Value {
-            static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-                Regex::new(r"^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$").unwrap()
-            });
+            // Use the main code's SECRET_PATTERN
             match value {
                 Value::Object(map) => {
                     let mut new_map = serde_json::Map::new();
@@ -245,14 +243,14 @@ mod tests {
 
         // Helper for whitespace variations
         let whitespace_variants = vec![
-            format!("${{{{secret.{}}}}}", secret_name),
-            format!("${{{{ secret.{} }}}}", secret_name),
-            format!("${{{{  secret.{}  }}}}", secret_name),
-            format!("${{{{secret.{}    }}}}", secret_name),
-            format!("${{{{    secret.{} }}}}", secret_name),
-            format!("${{{{    secret.{}    }}}}", secret_name),
-            format!("  ${{{{ secret.{} }}}}  ", secret_name),
-            format!("\t${{{{ secret.{} }}}}\n", secret_name),
+            format!("{{{{secret.{}}}}}", secret_name),
+            format!("{{{{ secret.{} }}}}", secret_name),
+            format!("{{{{  secret.{}  }}}}", secret_name),
+            format!("{{{{secret.{}    }}}}", secret_name),
+            format!("{{{{    secret.{} }}}}", secret_name),
+            format!("{{{{    secret.{}    }}}}", secret_name),
+            format!("  {{{{ secret.{} }}}}  ", secret_name),
+            format!("\t{{{{ secret.{} }}}}\n", secret_name),
         ];
 
         for variant in whitespace_variants {
@@ -272,9 +270,7 @@ mod tests {
             });
 
             fn resolve_secrets_test(value: Value, secret_file: &std::path::Path) -> Value {
-                static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-                    Regex::new(r"^\s*\$\{\{\s*secret\.\s*([A-Za-z0-9_]+)\s*\}\}\s*$").unwrap()
-                });
+                // Use the main code's SECRET_PATTERN
                 match value {
                     Value::Object(map) => {
                         let mut new_map = serde_json::Map::new();
