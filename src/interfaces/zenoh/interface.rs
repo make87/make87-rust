@@ -1,9 +1,13 @@
 use crate::config::load_config_from_default_env;
-use crate::interfaces::zenoh::model::{HandlerChannel, ZenohProviderConfig, ZenohPublisherConfig, ZenohRequesterConfig, ZenohSubscriberConfig};
+use crate::interfaces::zenoh::model::{
+    HandlerChannel, ZenohProviderConfig, ZenohPublisherConfig, ZenohRequesterConfig,
+    ZenohSubscriberConfig,
+};
 use crate::models::{ApplicationEnvConfig, ProviderEndpointConfig, PublisherTopicConfig};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error as StdError;
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use zenoh::handlers::{FifoChannel, FifoChannelHandler, RingChannel, RingChannelHandler};
 use zenoh::pubsub::{Publisher, Subscriber};
 use zenoh::query::{Querier, Query, Queryable};
@@ -11,10 +15,13 @@ use zenoh::sample::Sample;
 use zenoh::Error as ZError;
 use zenoh::{Config, Session};
 
-fn decode_config<T: serde::de::DeserializeOwned>(map: &BTreeMap<String, Value>) -> Result<T, ZError> {
-    Ok(serde_json::from_value(Value::Object(map.clone().into_iter().collect()))?)
+fn decode_config<T: serde::de::DeserializeOwned>(
+    map: &BTreeMap<String, Value>,
+) -> Result<T, ZError> {
+    Ok(serde_json::from_value(Value::Object(
+        map.clone().into_iter().collect(),
+    ))?)
 }
-
 
 #[derive(Debug, thiserror::Error)]
 pub enum ZenohInterfaceError {
@@ -29,7 +36,6 @@ pub enum ZenohInterfaceError {
     #[error(transparent)]
     Other(#[from] Box<dyn StdError + Send + Sync>),
 }
-
 
 pub enum ConfiguredSubscriber {
     Fifo(Subscriber<FifoChannelHandler<Sample>>),
@@ -48,21 +54,33 @@ pub struct ZenohInterface {
 
 impl ZenohInterface {
     pub fn new(config: ApplicationEnvConfig, name: &str) -> Self {
-        Self { config, name: name.to_string() }
+        Self {
+            config,
+            name: name.to_string(),
+        }
     }
 
     pub fn from_default_env(name: &str) -> Result<Self, Box<dyn StdError + Send + Sync>> {
         let config = load_config_from_default_env()?;
-        Ok(Self { config, name: name.to_string() })
+        Ok(Self {
+            config,
+            name: name.to_string(),
+        })
     }
 
     pub fn zenoh_config(&self) -> Result<Config, Box<dyn StdError + Send + Sync>> {
         let mut cfg = Config::default();
+        if !is_port_in_use(7447) {
+            let listen_endpoints = vec!["tcp/0.0.0.0:7447"];
+            let listen_json = serde_json::to_string(&listen_endpoints)?;
+            cfg.insert_json5("listen/endpoints", &listen_json)?;
+        }
 
-        let endpoints_set: HashSet<_> = self.config.interfaces.get(&self.name)
-            .map(|iface| {
-                iface.subscribers.values().map(|s| &s.access_point)
-            })
+        let endpoints_set: HashSet<_> = self
+            .config
+            .interfaces
+            .get(&self.name)
+            .map(|iface| iface.subscribers.values().map(|s| &s.access_point))
             .into_iter()
             .flatten()
             .map(|ap| format!("tcp/{}:{}", ap.vpn_ip, ap.vpn_port))
@@ -82,19 +100,41 @@ impl ZenohInterface {
     }
 
     pub fn get_publisher_config(&self, topic_name: &str) -> Option<&PublisherTopicConfig> {
-        self.config.interfaces.get(&self.name)?.publishers.get(topic_name)
+        self.config
+            .interfaces
+            .get(&self.name)?
+            .publishers
+            .get(topic_name)
     }
 
-    pub fn get_subscriber_config(&self, topic_name: &str) -> Option<&crate::models::BoundSubscriber> {
-        self.config.interfaces.get(&self.name)?.subscribers.get(topic_name)
+    pub fn get_subscriber_config(
+        &self,
+        topic_name: &str,
+    ) -> Option<&crate::models::BoundSubscriber> {
+        self.config
+            .interfaces
+            .get(&self.name)?
+            .subscribers
+            .get(topic_name)
     }
 
-    pub fn get_requester_config(&self, endpoint_name: &str) -> Option<&crate::models::BoundRequester> {
-        self.config.interfaces.get(&self.name)?.requesters.get(endpoint_name)
+    pub fn get_requester_config(
+        &self,
+        endpoint_name: &str,
+    ) -> Option<&crate::models::BoundRequester> {
+        self.config
+            .interfaces
+            .get(&self.name)?
+            .requesters
+            .get(endpoint_name)
     }
 
     pub fn get_provider_config(&self, endpoint_name: &str) -> Option<&ProviderEndpointConfig> {
-        self.config.interfaces.get(&self.name)?.providers.get(endpoint_name)
+        self.config
+            .interfaces
+            .get(&self.name)?
+            .providers
+            .get(endpoint_name)
     }
 
     pub async fn get_publisher(
@@ -102,7 +142,8 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
     ) -> Result<Publisher<'static>, ZError> {
-        let pub_cfg = self.get_publisher_config(name)
+        let pub_cfg = self
+            .get_publisher_config(name)
             .ok_or_else(|| ZenohInterfaceError::PubTopicNotFound(name.to_string()))?;
         let zenoh_config: ZenohPublisherConfig = decode_config(&pub_cfg.config)?;
         let publisher = session
@@ -120,7 +161,8 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
     ) -> Result<ConfiguredSubscriber, ZError> {
-        let sub_cfg = self.get_subscriber_config(name)
+        let sub_cfg = self
+            .get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
         let zenoh_config: ZenohSubscriberConfig = decode_config(&sub_cfg.config.config)?;
         match &zenoh_config.handler {
@@ -147,7 +189,8 @@ impl ZenohInterface {
         name: &str,
         handler: Box<dyn Fn(Sample) + Send + Sync + 'static>,
     ) -> Result<Subscriber<()>, ZError> {
-        let sub_cfg = self.get_subscriber_config(name)
+        let sub_cfg = self
+            .get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
         session
             .declare_subscriber(sub_cfg.config.topic_key.clone())
@@ -161,7 +204,8 @@ impl ZenohInterface {
         name: &str,
         handler: Box<dyn FnMut(Sample) + Send + Sync + 'static>,
     ) -> Result<Subscriber<()>, ZError> {
-        let sub_cfg = self.get_subscriber_config(name)
+        let sub_cfg = self
+            .get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
         session
             .declare_subscriber(sub_cfg.config.topic_key.clone())
@@ -174,7 +218,8 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
     ) -> Result<Querier<'static>, ZError> {
-        let req_cfg = self.get_requester_config(name)
+        let req_cfg = self
+            .get_requester_config(name)
             .ok_or_else(|| ZenohInterfaceError::ReqEndpointNotFound(name.to_string()))?;
         let zenoh_config: ZenohRequesterConfig = decode_config(&req_cfg.config.config)?;
         let querier = session
@@ -191,7 +236,8 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
     ) -> Result<ConfiguredProvider, ZError> {
-        let prv_cfg = self.get_provider_config(name)
+        let prv_cfg = self
+            .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
         let zenoh_config: ZenohProviderConfig = decode_config(&prv_cfg.config)?;
         match &zenoh_config.handler {
@@ -218,7 +264,8 @@ impl ZenohInterface {
         name: &str,
         handler: Box<dyn Fn(Query) + Send + Sync + 'static>,
     ) -> Result<Queryable<()>, ZError> {
-        let prv_cfg = self.get_provider_config(name)
+        let prv_cfg = self
+            .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
         session
             .declare_queryable(prv_cfg.endpoint_key.clone())
@@ -232,7 +279,8 @@ impl ZenohInterface {
         name: &str,
         handler: Box<dyn FnMut(Query) + Send + Sync + 'static>,
     ) -> Result<Queryable<()>, ZError> {
-        let prv_cfg = self.get_provider_config(name)
+        let prv_cfg = self
+            .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
         session
             .declare_queryable(prv_cfg.endpoint_key.clone())
@@ -241,13 +289,23 @@ impl ZenohInterface {
     }
 }
 
+fn is_port_in_use(port: u16) -> bool {
+    let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port);
+    TcpListener::bind(addr).map_err(
+        // print the error
+        |e| eprintln!("Failed to bind to port {}: {}", port, e),
+    ).is_err()
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::interfaces::zenoh::model::ZenohPublisherConfig;
+    use crate::models::{
+        ApplicationEnvConfig, InterfaceConfig, ProviderEndpointConfig, PublisherTopicConfig,
+        RequesterEndpointConfig, SubscriberTopicConfig,
+    };
     use crate::models::{ApplicationInfo, MountedPeripherals};
-    use crate::models::{ApplicationEnvConfig, InterfaceConfig, ProviderEndpointConfig, PublisherTopicConfig, RequesterEndpointConfig, SubscriberTopicConfig};
     use serde_json::json;
     use std::collections::BTreeMap;
     use zenoh::qos;
@@ -255,7 +313,9 @@ mod tests {
     fn default_app_config() -> ApplicationEnvConfig {
         ApplicationEnvConfig {
             interfaces: BTreeMap::new(),
-            peripherals: MountedPeripherals { peripherals: vec![] },
+            peripherals: MountedPeripherals {
+                peripherals: vec![],
+            },
             config: serde_json::json!({}),
             storage: None,
             application_info: ApplicationInfo {
@@ -310,7 +370,10 @@ mod tests {
             interface_name: "zenoh".into(),
             config: {
                 let mut m = BTreeMap::new();
-                m.insert("handler".to_string(), json!({"handler_type":"FIFO", "capacity": 12}));
+                m.insert(
+                    "handler".to_string(),
+                    json!({"handler_type":"FIFO", "capacity": 12}),
+                );
                 m
             },
             protocol: "zenoh".into(),
@@ -346,7 +409,10 @@ mod tests {
             interface_name: "zenoh".into(),
             config: {
                 let mut m = BTreeMap::new();
-                m.insert("handler".to_string(), json!({"handler_type":"RING", "capacity": 7}));
+                m.insert(
+                    "handler".to_string(),
+                    json!({"handler_type":"RING", "capacity": 7}),
+                );
                 m
             },
             protocol: "zenoh".into(),
@@ -358,7 +424,9 @@ mod tests {
     async fn test_get_publisher_found() {
         let mut config = default_app_config();
         let mut iface_config = make_interface_config();
-        iface_config.publishers.insert("HELLO_WORLD_MESSAGE".into(), pub_topic_config());
+        iface_config
+            .publishers
+            .insert("HELLO_WORLD_MESSAGE".into(), pub_topic_config());
         config.interfaces.insert("zenoh".into(), iface_config);
 
         let iface = ZenohInterface::new(config, "zenoh");
@@ -375,7 +443,7 @@ mod tests {
         let session = iface.get_session().await.unwrap();
         let publisher = iface.get_publisher(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(publisher.is_ok());
-        
+
         let subscriber = iface.get_subscriber(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(subscriber.is_err());
         let requester = iface.get_requester(&session, "HELLO_WORLD_MESSAGE").await;
@@ -388,16 +456,19 @@ mod tests {
     async fn test_get_subscriber_found() {
         let mut config = default_app_config();
         let mut iface_config = make_interface_config();
-        iface_config.subscribers.insert("HELLO_WORLD_MESSAGE".into(), crate::models::BoundSubscriber {
-            access_point: crate::models::AccessPoint {
-                vpn_ip: "127.0.0.1".into(),
-                vpn_port: 7447,
-                public_ip: None,
-                public_port: None,
-                same_node: false,
+        iface_config.subscribers.insert(
+            "HELLO_WORLD_MESSAGE".into(),
+            crate::models::BoundSubscriber {
+                access_point: crate::models::AccessPoint {
+                    vpn_ip: "127.0.0.1".into(),
+                    vpn_port: 7447,
+                    public_ip: None,
+                    public_port: None,
+                    same_node: false,
+                },
+                config: sub_topic_config(),
             },
-            config: sub_topic_config(),
-        });
+        );
         config.interfaces.insert("zenoh".into(), iface_config);
 
         let iface = ZenohInterface::new(config, "zenoh");
@@ -423,16 +494,19 @@ mod tests {
     async fn test_get_requester_found() {
         let mut config = default_app_config();
         let mut iface_config = make_interface_config();
-        iface_config.requesters.insert("HELLO_WORLD_MESSAGE".into(), crate::models::BoundRequester {
-            access_point: crate::models::AccessPoint {
-                vpn_ip: "127.0.0.1".into(),
-                vpn_port: 7447,
-                public_ip: None,
-                public_port: None,
-                same_node: false,
+        iface_config.requesters.insert(
+            "HELLO_WORLD_MESSAGE".into(),
+            crate::models::BoundRequester {
+                access_point: crate::models::AccessPoint {
+                    vpn_ip: "127.0.0.1".into(),
+                    vpn_port: 7447,
+                    public_ip: None,
+                    public_port: None,
+                    same_node: false,
+                },
+                config: req_endpoint_config(),
             },
-            config: req_endpoint_config(),
-        });
+        );
         config.interfaces.insert("zenoh".into(), iface_config);
 
         let iface = ZenohInterface::new(config, "zenoh");
@@ -456,7 +530,9 @@ mod tests {
     async fn test_get_provider_found() {
         let mut config = default_app_config();
         let mut iface_config = make_interface_config();
-        iface_config.providers.insert("HELLO_WORLD_MESSAGE".into(), prv_endpoint_config());
+        iface_config
+            .providers
+            .insert("HELLO_WORLD_MESSAGE".into(), prv_endpoint_config());
         config.interfaces.insert("zenoh".into(), iface_config);
 
         let iface = ZenohInterface::new(config, "zenoh");
@@ -500,7 +576,6 @@ mod tests {
         let session = iface.get_session().await.unwrap();
         let subscriber = iface.get_subscriber(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(subscriber.is_err());
-
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -521,4 +596,3 @@ mod tests {
         assert!(provider.is_err());
     }
 }
-
