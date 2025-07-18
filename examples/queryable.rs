@@ -1,13 +1,8 @@
 use make87::encodings::{Encoder, ProtobufEncoder};
-use make87::interfaces::zenoh::{ConfiguredProvider, ZenohInterface};
-use make87::models::{
-    ApplicationConfig, ApplicationInfo, InterfaceConfig,
-    MountedPeripherals, ProviderEndpointConfig,
-};
+use make87::interfaces::zenoh::{ConfiguredQueryable, ZenohInterface};
 use make87_messages::core::Header;
 use make87_messages::google::protobuf::Timestamp;
 use make87_messages::text::PlainText;
-use std::collections::BTreeMap;
 use std::error::Error;
 
 macro_rules! recv_and_reply {
@@ -47,13 +42,13 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let zenoh_interface = ZenohInterface::from_default_env("zenoh")?;
     let session = zenoh_interface.get_session().await?;
 
-    let configured_provider = zenoh_interface
-        .get_provider(&session, "HELLO_WORLD_MESSAGE")
+    let configured_queryable = zenoh_interface
+        .get_queryable(&session, "HELLO_WORLD_MESSAGE")
         .await?;
 
-    match configured_provider {
-        ConfiguredProvider::Fifo(prv) => recv_and_reply!(prv)?,
-        ConfiguredProvider::Ring(prv) => recv_and_reply!(prv)?,
+    match configured_queryable {
+        ConfiguredQueryable::Fifo(prv) => recv_and_reply!(prv)?,
+        ConfiguredQueryable::Ring(prv) => recv_and_reply!(prv)?,
     }
 
     Ok(())

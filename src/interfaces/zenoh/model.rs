@@ -85,14 +85,14 @@ pub struct ZenohPublisherConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct ZenohRequesterConfig {
+pub struct ZenohQuerierConfig {
     pub congestion_control: CongestionControl,
     pub priority: Priority,
     pub express: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct ZenohProviderConfig {
+pub struct ZenohQueryableConfig {
     pub handler: HandlerChannel,
 }
 
@@ -157,24 +157,24 @@ mod tests {
     }
 
     #[test]
-    fn test_zenoh_requester_config_serialization() {
-        let config = ZenohRequesterConfig {
+    fn test_zenoh_querier_config_serialization() {
+        let config = ZenohQuerierConfig {
             congestion_control: CongestionControl::Drop,
             priority: Priority::Data,
             express: false,
         };
         let json = serde_json::to_string(&config).unwrap();
-        let de: ZenohRequesterConfig = serde_json::from_str(&json).unwrap();
+        let de: ZenohQuerierConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, de);
     }
 
     #[test]
-    fn test_zenoh_provider_config_serialization() {
-        let config = ZenohProviderConfig {
+    fn test_zenoh_queryable_config_serialization() {
+        let config = ZenohQueryableConfig {
             handler: HandlerChannel::Ring { capacity: 7 },
         };
         let json = serde_json::to_string(&config).unwrap();
-        let de: ZenohProviderConfig = serde_json::from_str(&json).unwrap();
+        let de: ZenohQueryableConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, de);
     }
 }

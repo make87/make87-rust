@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::error::Error;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -8,7 +7,6 @@ use make87::interfaces::zenoh::ZenohInterface;
 use make87_messages::core::Header;
 use make87_messages::google::protobuf::Timestamp;
 use make87_messages::text::PlainText;
-use make87::models::{AccessPoint, ApplicationConfig, ApplicationInfo, BoundRequester, BoundSubscriber, InterfaceConfig, MountedPeripherals, PublisherTopicConfig, RequesterEndpointConfig, SubscriberTopicConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -16,7 +14,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let zenoh_interface = ZenohInterface::from_default_env("zenoh")?;
     let session = zenoh_interface.get_session().await?;
 
-    let requester = zenoh_interface.get_requester(&session, "HELLO_WORLD_MESSAGE").await?;
+    let requester = zenoh_interface.get_querier(&session, "HELLO_WORLD_MESSAGE").await?;
     let mut header = Header {
         entity_path: "/pytest/pub_sub".to_string(),
         reference_id: 0,

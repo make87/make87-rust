@@ -1,6 +1,6 @@
 use crate::config::load_config_from_default_env;
 use crate::interfaces::zenoh::model::{
-    HandlerChannel, ZenohProviderConfig, ZenohPublisherConfig, ZenohRequesterConfig,
+    HandlerChannel, ZenohQueryableConfig, ZenohPublisherConfig, ZenohQuerierConfig,
     ZenohSubscriberConfig,
 };
 use crate::models::{ApplicationEnvConfig, ProviderEndpointConfig, PublisherTopicConfig};
@@ -42,7 +42,7 @@ pub enum ConfiguredSubscriber {
     Ring(Subscriber<RingChannelHandler<Sample>>),
 }
 
-pub enum ConfiguredProvider {
+pub enum ConfiguredQueryable {
     Fifo(Queryable<FifoChannelHandler<Query>>),
     Ring(Queryable<RingChannelHandler<Query>>),
 }
@@ -213,7 +213,7 @@ impl ZenohInterface {
             .await
     }
 
-    pub async fn get_requester(
+    pub async fn get_querier(
         &self,
         session: &Session,
         name: &str,
@@ -221,7 +221,7 @@ impl ZenohInterface {
         let req_cfg = self
             .get_requester_config(name)
             .ok_or_else(|| ZenohInterfaceError::ReqEndpointNotFound(name.to_string()))?;
-        let zenoh_config: ZenohRequesterConfig = decode_config(&req_cfg.config.config)?;
+        let zenoh_config: ZenohQuerierConfig = decode_config(&req_cfg.config.config)?;
         let querier = session
             .declare_querier(req_cfg.config.endpoint_key.clone())
             .congestion_control(zenoh_config.congestion_control.to_zenoh())
@@ -231,34 +231,35 @@ impl ZenohInterface {
         Ok(querier)
     }
 
-    pub async fn get_provider(
+    pub async fn get_queryable(
         &self,
         session: &Session,
         name: &str,
-    ) -> Result<ConfiguredProvider, ZError> {
+    ) -> Result<ConfiguredQueryable, ZError> {
         let prv_cfg = self
             .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
-        let zenoh_config: ZenohProviderConfig = decode_config(&prv_cfg.config)?;
+        let zenoh_config: ZenohQueryableConfig = decode_config(&prv_cfg.config)?;
         match &zenoh_config.handler {
             HandlerChannel::Fifo { capacity } => {
-                let provider = session
+                let queryable = session
                     .declare_queryable(prv_cfg.endpoint_key.clone())
                     .with(FifoChannel::new(*capacity as usize))
                     .await?;
-                Ok(ConfiguredProvider::Fifo(provider))
+                Ok(ConfiguredQueryable::Fifo(queryable))
             }
             HandlerChannel::Ring { capacity } => {
-                let provider = session
+                let queryable = session
                     .declare_queryable(prv_cfg.endpoint_key.clone())
                     .with(RingChannel::new(*capacity as usize))
                     .await?;
-                Ok(ConfiguredProvider::Ring(provider))
+                Ok(ConfiguredQueryable::Ring(queryable))
             }
         }
     }
 
-    pub async fn get_provider_callback(
+
+    pub async fn get_queryable_callback(
         &self,
         session: &Session,
         name: &str,
@@ -273,7 +274,7 @@ impl ZenohInterface {
             .await
     }
 
-    pub async fn get_provider_callback_mut(
+    pub async fn get_queryable_callback_mut(
         &self,
         session: &Session,
         name: &str,
@@ -446,10 +447,10 @@ mod tests {
 
         let subscriber = iface.get_subscriber(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(subscriber.is_err());
-        let requester = iface.get_requester(&session, "HELLO_WORLD_MESSAGE").await;
+        let requester = iface.get_querier(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(requester.is_err());
-        let provider = iface.get_provider(&session, "HELLO_WORLD_MESSAGE").await;
-        assert!(provider.is_err());
+        let queryable = iface.get_queryable(&session, "HELLO_WORLD_MESSAGE").await;
+        assert!(queryable.is_err());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -491,7 +492,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_get_requester_found() {
+    async fn test_get_querier_found() {
         let mut config = default_app_config();
         let mut iface_config = make_interface_config();
         iface_config.requesters.insert(
@@ -515,19 +516,19 @@ mod tests {
 
         // Also test decoding
         if let Some(req_cfg) = result {
-            use crate::interfaces::zenoh::model::ZenohRequesterConfig;
-            let decoded: ZenohRequesterConfig = decode_config(&req_cfg.config.config).unwrap();
+            use crate::interfaces::zenoh::model::ZenohQuerierConfig;
+            let decoded: ZenohQuerierConfig = decode_config(&req_cfg.config.config).unwrap();
             assert_eq!(decoded.priority.to_zenoh(), qos::Priority::RealTime);
             assert!(decoded.express);
         }
 
         let session = iface.get_session().await.unwrap();
-        let requester = iface.get_requester(&session, "HELLO_WORLD_MESSAGE").await;
+        let requester = iface.get_querier(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(requester.is_ok());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_get_provider_found() {
+    async fn test_get_queryable_found() {
         let mut config = default_app_config();
         let mut iface_config = make_interface_config();
         iface_config
@@ -541,8 +542,8 @@ mod tests {
 
         // Also test decoding
         if let Some(prv_cfg) = result {
-            use crate::interfaces::zenoh::model::ZenohProviderConfig;
-            let decoded: ZenohProviderConfig = decode_config(&prv_cfg.config).unwrap();
+            use crate::interfaces::zenoh::model::ZenohQueryableConfig;
+            let decoded: ZenohQueryableConfig = decode_config(&prv_cfg.config).unwrap();
             match &decoded.handler {
                 HandlerChannel::Ring { capacity } => assert_eq!(*capacity, 7),
                 _ => panic!("Expected RING handler"),
@@ -550,8 +551,8 @@ mod tests {
         }
 
         let session = iface.get_session().await.unwrap();
-        let provider = iface.get_provider(&session, "HELLO_WORLD_MESSAGE").await;
-        assert!(provider.is_ok());
+        let queryable = iface.get_queryable(&session, "HELLO_WORLD_MESSAGE").await;
+        assert!(queryable.is_ok());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -579,7 +580,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_get_requester_and_provider_none() {
+    async fn test_get_querier_and_queryable_none() {
         let config = default_app_config();
         let iface = ZenohInterface::new(config, "zenoh");
 
@@ -590,9 +591,9 @@ mod tests {
         assert!(prv.is_none());
 
         let session = iface.get_session().await.unwrap();
-        let requester = iface.get_requester(&session, "HELLO_WORLD_MESSAGE").await;
+        let requester = iface.get_querier(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(requester.is_err());
-        let provider = iface.get_provider(&session, "HELLO_WORLD_MESSAGE").await;
-        assert!(provider.is_err());
+        let queryable = iface.get_queryable(&session, "HELLO_WORLD_MESSAGE").await;
+        assert!(queryable.is_err());
     }
 }

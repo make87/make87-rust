@@ -120,8 +120,8 @@ fn test_req_prv_defaults_only() {
     // 2. Find your requester and provider binaries
     let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
     let debug_examples = format!("{}/debug/examples", target_dir);
-    let provider_bin = std::path::Path::new(&debug_examples).join("provider");
-    let requester_bin = std::path::Path::new(&debug_examples).join("requester");
+    let provider_bin = std::path::Path::new(&debug_examples).join("queryable");
+    let requester_bin = std::path::Path::new(&debug_examples).join("querier");
 
     // 3. Start provider first
     let mut prv_proc = spawn_with_env(provider_bin.to_str().unwrap(), &provider_config_json);
@@ -135,19 +135,19 @@ fn test_req_prv_defaults_only() {
     req_proc.kill().ok();
     let req_output = req_proc
         .wait_with_output()
-        .expect("Failed to wait on requester");
+        .expect("Failed to wait on querier");
     let req_stdout = String::from_utf8_lossy(&req_output.stdout);
     let req_stderr = String::from_utf8_lossy(&req_output.stderr);
 
     prv_proc.kill().ok();
-    let prv_output = prv_proc.wait_with_output().expect("Failed to wait on provider");
+    let prv_output = prv_proc.wait_with_output().expect("Failed to wait on queryable");
     let prv_stdout = String::from_utf8_lossy(&prv_output.stdout);
     let prv_stderr = String::from_utf8_lossy(&prv_output.stderr);
 
-    println!("Requester stdout:\n{}", req_stdout);
-    println!("Requester stderr:\n{}", req_stderr);
-    println!("Provider stdout:\n{}", prv_stdout);
-    println!("Provider stderr:\n{}", prv_stderr);
+    println!("Querier stdout:\n{}", req_stdout);
+    println!("Querier stderr:\n{}", req_stderr);
+    println!("Queryable stdout:\n{}", prv_stdout);
+    println!("Queryable stderr:\n{}", prv_stderr);
 
     // 6. Check output
     assert!(req_stdout.to_lowercase().contains("olleh"));

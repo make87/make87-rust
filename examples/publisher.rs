@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::error::Error;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -8,7 +7,6 @@ use make87::interfaces::zenoh::ZenohInterface;
 use make87_messages::core::Header;
 use make87_messages::google::protobuf::Timestamp;
 use make87_messages::text::PlainText;
-use make87::models::{AccessPoint, ApplicationConfig, ApplicationInfo, BoundSubscriber, InterfaceConfig, MountedPeripherals, PublisherTopicConfig, SubscriberTopicConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {

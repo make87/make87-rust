@@ -1,10 +1,8 @@
-use std::collections::BTreeMap;
 use std::error::Error;
 
 use make87::encodings::{Encoder, ProtobufEncoder};
-use make87::interfaces::zenoh::{ConfiguredSubscriber, ZenohInterface, ZenohSubscriberConfig};
+use make87::interfaces::zenoh::{ConfiguredSubscriber, ZenohInterface};
 use make87_messages::text::PlainText;
-use make87::models::{AccessPoint, ApplicationConfig, ApplicationInfo, BoundSubscriber, InterfaceConfig, MountedPeripherals, PublisherTopicConfig, SubscriberTopicConfig};
 
 macro_rules! recv_and_print {
     ($sub:expr) => {{
