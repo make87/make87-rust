@@ -25,6 +25,9 @@ aws-credential-types = { version = "1.2.3", optional = true, features = ["hardco
 make87_messages = { version = "0.2.6", optional = true }
 regex = "1.11.1"
 once_cell = "1.20.2"
+rerun = { version = "0.24.1", optional = true }
+uuid = { version = "1.18.0", features = ["v4"], optional = true }
+sha2 = { version = "0.10.9", optional = true }
 
 [dev-dependencies]
 tempfile = "3.20.0"
@@ -35,3 +38,4 @@ protobuf = ["dep:prost"]
 yaml = ["dep:serde_yaml"]
 storage = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-credential-types"]
 make87_messages = ["dep:make87_messages"]
+rerun = ["dep:rerun", "dep:uuid", "dep:sha2"]
