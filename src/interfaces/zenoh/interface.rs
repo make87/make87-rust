@@ -23,7 +23,7 @@ fn decode_config<T: serde::de::DeserializeOwned>(
     ))?)
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ZenohInterfaceError {
     #[error("No publisher topic found with name: {0}")]
     PubTopicNotFound(String),
