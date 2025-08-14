@@ -1,11 +1,28 @@
 use std::env;
-use std::error::Error;
 use std::fs;
+use std::io;
+use thiserror::Error;
 use regex::Regex;
 use serde_json::{self, Value};
 use crate::models::ApplicationConfig;
 
 pub const DEFAULT_ENV_VAR: &str = "MAKE87_CONFIG";
+
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error(transparent)]
+    EnvVar(#[from] env::VarError),
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
+    #[error("failed to load secret '{name}': {source}")]
+    Secret {
+        name: String,
+        #[source]
+        source: io::Error,
+    },
+}
+
+pub type Result<T> = std::result::Result<T, ConfigError>;
 
 // Make the regex static and pub(crate) so tests can use it
 pub(crate) static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
@@ -13,7 +30,7 @@ pub(crate) static SECRET_PATTERN: once_cell::sync::Lazy<Regex> = once_cell::sync
 });
 
 // Recursively resolve secrets in a serde_json::Value
-fn resolve_secrets(value: Value) -> Result<Value, Box<dyn Error + Send + Sync + 'static>> {
+fn resolve_secrets(value: Value) -> Result<Value> {
     // Use the shared static regex
     match value {
         Value::Object(map) => {
@@ -35,7 +52,10 @@ fn resolve_secrets(value: Value) -> Result<Value, Box<dyn Error + Send + Sync + 
                 let secret_name = &caps[1];
                 let secret_path = format!("/run/secrets/{}.secret", secret_name);
                 let secret_value = fs::read_to_string(&secret_path)
-                    .map_err(|e| format!("Failed to load secret '{}': {}", secret_name, e))?
+                    .map_err(|e| ConfigError::Secret {
+                        name: secret_name.to_string(),
+                        source: e,
+                    })?
                     .trim()
                     .to_owned();
                 Ok(Value::String(secret_value))
@@ -47,18 +67,18 @@ fn resolve_secrets(value: Value) -> Result<Value, Box<dyn Error + Send + Sync + 
     }
 }
 
-pub fn load_config_from_default_env() -> Result<ApplicationConfig, Box<dyn Error + Send + Sync + 'static>> {
+pub fn load_config_from_default_env() -> Result<ApplicationConfig> {
     load_config_from_env(DEFAULT_ENV_VAR)
 }
 
-pub fn load_config_from_env(var: &str) -> Result<ApplicationConfig, Box<dyn Error + Send + Sync + 'static>> {
+pub fn load_config_from_env(var: &str) -> Result<ApplicationConfig> {
     let raw = env::var(var)?;
     let mut config: ApplicationConfig = serde_json::from_str(&raw)?;
     config.config = resolve_secrets(config.config)?;
     Ok(config)
 }
 
-pub fn load_config_from_json<T: AsRef<str>>(json_data: T) -> Result<ApplicationConfig, Box<dyn Error + Send + Sync + 'static>> {
+pub fn load_config_from_json<T: AsRef<str>>(json_data: T) -> Result<ApplicationConfig> {
     let mut config: ApplicationConfig = serde_json::from_str(json_data.as_ref())?;
     config.config = resolve_secrets(config.config)?;
     Ok(config)
