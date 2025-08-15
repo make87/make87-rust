@@ -100,7 +100,7 @@ impl ZenohInterface {
     pub async fn get_session(&self) -> Result<Session, ZenohInterfaceError> {
         let cfg = self.zenoh_config()?;
         let session = zenoh::open(cfg).await?;
-        Ok(session)
+        zenoh::open(cfg).await.map_err(Into::into)
     }
 
     pub fn get_publisher_config(&self, topic_name: &str) -> Option<&PublisherTopicConfig> {
