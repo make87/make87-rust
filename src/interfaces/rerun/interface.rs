@@ -19,7 +19,7 @@ fn decode_config<T: serde::de::DeserializeOwned>(
 pub enum RerunGRpcInterfaceError {
     #[error("No client service config found with name: {0}")]
     ClientServiceNotFound(String),
-    #[error("No server service found with name: {0}")]
+    #[error("No server service config found with name: {0}")]
     ServerServiceNotFound(String),
     #[error(transparent)]
     Config(#[from] ConfigError),
