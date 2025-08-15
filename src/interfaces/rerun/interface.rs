@@ -17,9 +17,9 @@ fn decode_config<T: serde::de::DeserializeOwned>(
 
 #[derive(Debug, thiserror::Error)]
 pub enum RerunGRpcInterfaceError {
-    #[error("No publisher topic found with name: {0}")]
+    #[error("No client service config found with name: {0}")]
     ClientServiceNotFound(String),
-    #[error("No subscriber topic found with name: {0}")]
+    #[error("No server service config found with name: {0}")]
     ServerServiceNotFound(String),
     #[error(transparent)]
     Config(#[from] ConfigError),

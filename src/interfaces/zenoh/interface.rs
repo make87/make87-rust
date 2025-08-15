@@ -1,6 +1,6 @@
 use crate::config::{load_config_from_default_env, ConfigError};
 use crate::interfaces::zenoh::model::{
-    HandlerChannel, ZenohQueryableConfig, ZenohPublisherConfig, ZenohQuerierConfig,
+    HandlerChannel, ZenohPublisherConfig, ZenohQuerierConfig, ZenohQueryableConfig,
     ZenohSubscriberConfig,
 };
 use crate::models::{ApplicationEnvConfig, ProviderEndpointConfig, PublisherTopicConfig};
@@ -99,7 +99,6 @@ impl ZenohInterface {
 
     pub async fn get_session(&self) -> Result<Session, ZenohInterfaceError> {
         let cfg = self.zenoh_config()?;
-        let session = zenoh::open(cfg).await?;
         zenoh::open(cfg).await.map_err(Into::into)
     }
 
