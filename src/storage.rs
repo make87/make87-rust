@@ -1,4 +1,4 @@
-use crate::config::load_config_from_default_env;
+use crate::config::{load_config_from_default_env, ConfigError};
 use crate::models::{ApplicationConfig, StorageConfig};
 use aws_config;
 use aws_config::BehaviorVersion;
@@ -7,7 +7,7 @@ use aws_credential_types::provider::SharedCredentialsProvider;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::Region;
-use serde::de::StdError;
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct S3Path {
@@ -94,13 +94,15 @@ impl BlobStorage {
         Self { config }
     }
 
-    pub fn from_default_env() -> Result<Self, Box<dyn StdError + Send + Sync>> {
+    pub fn from_default_env() -> Result<Self, ConfigError> {
         let config = load_config_from_default_env()?;
         Ok(Self { config })
     }
 
-    pub async fn get_client(&self) -> Result<Client, Box<dyn std::error::Error>> {
-        let storage = self.get_storage_config().ok_or("No storage config found")?;
+    pub async fn get_client(&self) -> Result<Client, StorageError> {
+        let storage = self
+            .get_storage_config()
+            .ok_or(StorageError::NoStorageConfig)?;
         let credentials = Credentials::from_keys(
             &storage.access_key,
             &storage.secret_key,
@@ -144,6 +146,12 @@ impl BlobStorage {
         self.get_system_path()
             .map(|path| path.join(deployed_id))
     }
+}
+
+#[derive(Debug, Error)]
+pub enum StorageError {
+    #[error("No storage config found")]
+    NoStorageConfig,
 }
 
 #[cfg(test)]

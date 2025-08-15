@@ -5,7 +5,6 @@ use crate::peripherals::{
     IspPeripheral, OtherPeripheral, RealSenseCameraPeripheral, RenderingPeripheral
 };
 use std::collections::HashMap;
-use std::error::Error;
 
 #[derive(Debug, Clone)]
 pub enum Peripheral {
@@ -38,7 +37,7 @@ impl PeripheralManager {
         Self { peripherals, config }
     }
 
-    pub fn from_default_env() -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub fn from_default_env() -> Result<Self, crate::config::ConfigError> {
         let config = load_config_from_default_env()?;
         Ok(Self::new(config))
     }

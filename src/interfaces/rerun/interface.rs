@@ -1,18 +1,11 @@
-use crate::config::load_config_from_default_env;
+use crate::config::{load_config_from_default_env, ConfigError};
 use crate::interfaces::rerun::RerunGRpcServerConfig;
 use crate::models::{ApplicationEnvConfig, BoundClient, ServerServiceConfig};
 use rerun::{default_flush_timeout, MemoryLimit, RecordingStream, RecordingStreamBuilder, RecordingStreamError};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::error::Error as StdError;
 use uuid::Uuid;
-
-impl From<serde_json::Error> for RerunGRpcInterfaceError {
-    fn from(err: serde_json::Error) -> Self {
-        RerunGRpcInterfaceError::Other(Box::new(err))
-    }
-}
 
 fn decode_config<T: serde::de::DeserializeOwned>(
     map: &BTreeMap<String, Value>,
@@ -29,13 +22,11 @@ pub enum RerunGRpcInterfaceError {
     #[error("No subscriber topic found with name: {0}")]
     ServerServiceNotFound(String),
     #[error(transparent)]
-    Other(#[from] Box<dyn StdError + Send + Sync>),
-}
-
-impl From<RecordingStreamError> for RerunGRpcInterfaceError {
-    fn from(err: RecordingStreamError) -> Self {
-        RerunGRpcInterfaceError::Other(Box::new(err))
-    }
+    Config(#[from] ConfigError),
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
+    #[error(transparent)]
+    Rerun(#[from] RecordingStreamError),
 }
 
 
@@ -53,7 +44,7 @@ impl RerunGRpcInterface {
         }
     }
 
-    pub fn from_default_env(name: &str) -> Result<Self, Box<dyn StdError + Send + Sync>> {
+    pub fn from_default_env(name: &str) -> Result<Self, RerunGRpcInterfaceError> {
         let config = load_config_from_default_env()?;
         Ok(Self {
             config,
@@ -304,28 +295,12 @@ mod tests {
     fn test_error_from_recording_stream_error() {
         // Test the From trait implementation for RecordingStreamError
         // We'll create a simple error and verify it gets wrapped correctly
-        use std::error::Error;
-        use std::fmt;
 
-        #[derive(Debug)]
-        struct MockError;
-
-        impl fmt::Display for MockError {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "Mock error")
-            }
-        }
-
-        impl Error for MockError {}
-
-        let mock_error = Box::new(MockError) as Box<dyn StdError + Send + Sync>;
-        let interface_error = RerunGRpcInterfaceError::Other(mock_error);
-
-        match interface_error {
-            RerunGRpcInterfaceError::Other(_) => {
-                // This is expected
-            }
-            _ => panic!("Expected Other variant"),
+        let err: RerunGRpcInterfaceError =
+            serde_json::from_str::<serde_json::Value>("not json").unwrap_err().into();
+        match err {
+            RerunGRpcInterfaceError::SerdeJson(_) => {}
+            _ => panic!("Expected SerdeJson variant"),
         }
     }
 
@@ -494,10 +469,10 @@ mod tests {
         // Should fail due to missing max_bytes in config
         assert!(result.is_err());
         match result.unwrap_err() {
-            RerunGRpcInterfaceError::Other(_) => {
+            RerunGRpcInterfaceError::SerdeJson(_) => {
                 // Expected - JSON deserialization should fail
             }
-            _ => panic!("Expected Other error for invalid config"),
+            _ => panic!("Expected SerdeJson error for invalid config"),
         }
     }
 
@@ -580,10 +555,10 @@ mod tests {
         assert!(result.is_err());
 
         match result.unwrap_err() {
-            RerunGRpcInterfaceError::Other(_) => {
+            RerunGRpcInterfaceError::SerdeJson(_) => {
                 // Expected - should be a JSON deserialization error
             }
-            _ => panic!("Expected Other error for invalid config decode"),
+            _ => panic!("Expected SerdeJson error for invalid config decode"),
         }
     }
 

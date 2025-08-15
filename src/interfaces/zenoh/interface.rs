@@ -1,4 +1,4 @@
-use crate::config::load_config_from_default_env;
+use crate::config::{load_config_from_default_env, ConfigError};
 use crate::interfaces::zenoh::model::{
     HandlerChannel, ZenohQueryableConfig, ZenohPublisherConfig, ZenohQuerierConfig,
     ZenohSubscriberConfig,
@@ -6,7 +6,6 @@ use crate::interfaces::zenoh::model::{
 use crate::models::{ApplicationEnvConfig, ProviderEndpointConfig, PublisherTopicConfig};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
-use std::error::Error as StdError;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use zenoh::handlers::{FifoChannel, FifoChannelHandler, RingChannel, RingChannelHandler};
 use zenoh::pubsub::{Publisher, Subscriber};
@@ -17,7 +16,7 @@ use zenoh::{Config, Session};
 
 fn decode_config<T: serde::de::DeserializeOwned>(
     map: &BTreeMap<String, Value>,
-) -> Result<T, ZError> {
+) -> Result<T, ZenohInterfaceError> {
     Ok(serde_json::from_value(Value::Object(
         map.clone().into_iter().collect(),
     ))?)
@@ -34,7 +33,11 @@ pub enum ZenohInterfaceError {
     #[error("No provider endpoint found with name: {0}")]
     PrvEndpointNotFound(String),
     #[error(transparent)]
-    Other(#[from] Box<dyn StdError + Send + Sync>),
+    Config(#[from] ConfigError),
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
+    #[error(transparent)]
+    Zenoh(#[from] ZError),
 }
 
 pub enum ConfiguredSubscriber {
@@ -60,7 +63,7 @@ impl ZenohInterface {
         }
     }
 
-    pub fn from_default_env(name: &str) -> Result<Self, Box<dyn StdError + Send + Sync>> {
+    pub fn from_default_env(name: &str) -> Result<Self, ZenohInterfaceError> {
         let config = load_config_from_default_env()?;
         Ok(Self {
             config,
@@ -68,7 +71,7 @@ impl ZenohInterface {
         })
     }
 
-    pub fn zenoh_config(&self) -> Result<Config, Box<dyn StdError + Send + Sync>> {
+    pub fn zenoh_config(&self) -> Result<Config, ZenohInterfaceError> {
         let mut cfg = Config::default();
         if !is_port_in_use(7447) {
             let listen_endpoints = vec!["tcp/0.0.0.0:7447"];
@@ -94,9 +97,10 @@ impl ZenohInterface {
         Ok(cfg)
     }
 
-    pub async fn get_session(&self) -> Result<Session, ZError> {
+    pub async fn get_session(&self) -> Result<Session, ZenohInterfaceError> {
         let cfg = self.zenoh_config()?;
-        zenoh::open(cfg).await
+        let session = zenoh::open(cfg).await?;
+        zenoh::open(cfg).await.map_err(Into::into)
     }
 
     pub fn get_publisher_config(&self, topic_name: &str) -> Option<&PublisherTopicConfig> {
@@ -141,7 +145,7 @@ impl ZenohInterface {
         &self,
         session: &Session,
         name: &str,
-    ) -> Result<Publisher<'static>, ZError> {
+    ) -> Result<Publisher<'static>, ZenohInterfaceError> {
         let pub_cfg = self
             .get_publisher_config(name)
             .ok_or_else(|| ZenohInterfaceError::PubTopicNotFound(name.to_string()))?;
@@ -160,7 +164,7 @@ impl ZenohInterface {
         &self,
         session: &Session,
         name: &str,
-    ) -> Result<ConfiguredSubscriber, ZError> {
+    ) -> Result<ConfiguredSubscriber, ZenohInterfaceError> {
         let sub_cfg = self
             .get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
@@ -188,14 +192,15 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
         handler: Box<dyn Fn(Sample) + Send + Sync + 'static>,
-    ) -> Result<Subscriber<()>, ZError> {
+    ) -> Result<Subscriber<()>, ZenohInterfaceError> {
         let sub_cfg = self
             .get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
-        session
+        let subscriber = session
             .declare_subscriber(sub_cfg.config.topic_key.clone())
             .callback(handler)
-            .await
+            .await?;
+        Ok(subscriber)
     }
 
     pub async fn get_subscriber_callback_mut(
@@ -203,21 +208,22 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
         handler: Box<dyn FnMut(Sample) + Send + Sync + 'static>,
-    ) -> Result<Subscriber<()>, ZError> {
+    ) -> Result<Subscriber<()>, ZenohInterfaceError> {
         let sub_cfg = self
             .get_subscriber_config(name)
             .ok_or_else(|| ZenohInterfaceError::SubTopicNotFound(name.to_string()))?;
-        session
+        let subscriber = session
             .declare_subscriber(sub_cfg.config.topic_key.clone())
             .callback_mut(handler)
-            .await
+            .await?;
+        Ok(subscriber)
     }
 
     pub async fn get_querier(
         &self,
         session: &Session,
         name: &str,
-    ) -> Result<Querier<'static>, ZError> {
+    ) -> Result<Querier<'static>, ZenohInterfaceError> {
         let req_cfg = self
             .get_requester_config(name)
             .ok_or_else(|| ZenohInterfaceError::ReqEndpointNotFound(name.to_string()))?;
@@ -235,7 +241,7 @@ impl ZenohInterface {
         &self,
         session: &Session,
         name: &str,
-    ) -> Result<ConfiguredQueryable, ZError> {
+    ) -> Result<ConfiguredQueryable, ZenohInterfaceError> {
         let prv_cfg = self
             .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
@@ -264,14 +270,15 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
         handler: Box<dyn Fn(Query) + Send + Sync + 'static>,
-    ) -> Result<Queryable<()>, ZError> {
+    ) -> Result<Queryable<()>, ZenohInterfaceError> {
         let prv_cfg = self
             .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
-        session
+        let queryable = session
             .declare_queryable(prv_cfg.endpoint_key.clone())
             .callback(handler)
-            .await
+            .await?;
+        Ok(queryable)
     }
 
     pub async fn get_queryable_callback_mut(
@@ -279,14 +286,15 @@ impl ZenohInterface {
         session: &Session,
         name: &str,
         handler: Box<dyn FnMut(Query) + Send + Sync + 'static>,
-    ) -> Result<Queryable<()>, ZError> {
+    ) -> Result<Queryable<()>, ZenohInterfaceError> {
         let prv_cfg = self
             .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
-        session
+        let queryable = session
             .declare_queryable(prv_cfg.endpoint_key.clone())
             .callback_mut(handler)
-            .await
+            .await?;
+        Ok(queryable)
     }
 }
 
