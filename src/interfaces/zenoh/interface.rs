@@ -13,7 +13,6 @@ use zenoh::query::{Querier, Query, Queryable};
 use zenoh::sample::Sample;
 use zenoh::Error as ZError;
 use zenoh::{Config, Session};
-use thiserror::Error;
 
 fn decode_config<T: serde::de::DeserializeOwned>(
     map: &BTreeMap<String, Value>,
