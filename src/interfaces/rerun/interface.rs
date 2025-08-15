@@ -15,6 +15,12 @@ fn decode_config<T: serde::de::DeserializeOwned>(
     ))?)
 }
 
+fn base_recording_builder(system_id: &str) -> RecordingStreamBuilder {
+    RecordingStreamBuilder::new(system_id)
+        .recording_id(deterministic_uuid_v4_from_string(system_id))
+}
+
+
 #[derive(Debug, thiserror::Error)]
 pub enum RerunGRpcInterfaceError {
     #[error("No client service config found with name: {0}")]
@@ -75,7 +81,7 @@ impl RerunGRpcInterface {
         let client_cfg = self
             .get_client_service_config(name)
             .ok_or_else(|| RerunGRpcInterfaceError::ClientServiceNotFound(name.to_string()))?;
-        let rec = RecordingStreamBuilder::new(self.config.application_info.system_id.as_str())
+        let rec = base_recording_builder(self.config.application_info.system_id.as_str())
             .connect_grpc_opts(
                 format!(
                     "rerun+http://{}:{}/proxy",
@@ -97,10 +103,7 @@ impl RerunGRpcInterface {
 
         let rerun_config: RerunGRpcServerConfig = decode_config(&server_cfg.config)?;
 
-        let rec = RecordingStreamBuilder::new(self.config.application_info.system_id.as_str())
-            .recording_id(deterministic_uuid_v4_from_string(
-                &self.config.application_info.system_id,
-            ))
+        let rec = base_recording_builder(self.config.application_info.system_id.as_str())
             .serve_grpc_opts("0.0.0.0", 9876, MemoryLimit::from_bytes(rerun_config.max_bytes))?;
         Ok(rec)
 
@@ -281,13 +284,13 @@ mod tests {
         let client_error = RerunGRpcInterfaceError::ClientServiceNotFound("test".to_string());
         assert_eq!(
             format!("{}", client_error),
-            "No publisher topic found with name: test"
+            "No client service config found with name: test"
         );
 
         let server_error = RerunGRpcInterfaceError::ServerServiceNotFound("test".to_string());
         assert_eq!(
             format!("{}", server_error),
-            "No subscriber topic found with name: test"
+            "No server service config found with name: test"
         );
     }
 
