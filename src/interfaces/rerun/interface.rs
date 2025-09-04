@@ -1,10 +1,12 @@
 use crate::config::{load_config_from_default_env, ConfigError};
-use crate::interfaces::rerun::RerunGRpcServerConfig;
+use crate::interfaces::rerun::{RerunGRpcClientConfig, RerunGRpcServerConfig};
 use crate::models::{ApplicationEnvConfig, BoundClient, ServerServiceConfig};
-use rerun::{default_flush_timeout, MemoryLimit, RecordingStream, RecordingStreamBuilder, RecordingStreamError};
+use rerun::log::ChunkBatcherConfig;
+use rerun::{MemoryLimit, RecordingStream, RecordingStreamBuilder, RecordingStreamError};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::time::Duration;
 use uuid::Uuid;
 
 fn decode_config<T: serde::de::DeserializeOwned>(
@@ -20,7 +22,6 @@ fn base_recording_builder(system_id: &str) -> RecordingStreamBuilder {
         .recording_id(deterministic_uuid_v4_from_string(system_id))
 }
 
-
 #[derive(Debug, thiserror::Error)]
 pub enum RerunGRpcInterfaceError {
     #[error("No client service config found with name: {0}")]
@@ -34,8 +35,6 @@ pub enum RerunGRpcInterfaceError {
     #[error(transparent)]
     Rerun(#[from] RecordingStreamError),
 }
-
-
 
 pub struct RerunGRpcInterface {
     config: ApplicationEnvConfig,
@@ -81,13 +80,26 @@ impl RerunGRpcInterface {
         let client_cfg = self
             .get_client_service_config(name)
             .ok_or_else(|| RerunGRpcInterfaceError::ClientServiceNotFound(name.to_string()))?;
+
+        let rerun_config: RerunGRpcClientConfig = decode_config(&client_cfg.config.config)?;
+
+        // Configure the chunk batcher
+        let mut batcher_config = ChunkBatcherConfig::from_env().unwrap_or_default();
+        batcher_config.flush_tick =
+            Duration::from_secs_f32(rerun_config.batcher_config.flush_tick_secs);
+        batcher_config.flush_num_bytes = rerun_config.batcher_config.flush_num_byte;
+        batcher_config.flush_num_rows = rerun_config.batcher_config.flush_num_rows;
+
         let rec = base_recording_builder(self.config.application_info.system_id.as_str())
+            .batcher_config(batcher_config)
             .connect_grpc_opts(
                 format!(
                     "rerun+http://{}:{}/proxy",
                     client_cfg.access_point.vpn_ip, client_cfg.access_point.vpn_port
                 ),
-                default_flush_timeout(),
+                rerun_config
+                    .flush_timeout
+                    .map(|seconds| Duration::from_secs_f32(seconds)),
             )?;
 
         Ok(rec)
@@ -103,13 +115,16 @@ impl RerunGRpcInterface {
 
         let rerun_config: RerunGRpcServerConfig = decode_config(&server_cfg.config)?;
 
-        let rec = base_recording_builder(self.config.application_info.system_id.as_str())
-            .serve_grpc_opts("0.0.0.0", 9876, MemoryLimit::from_bytes(rerun_config.max_bytes))?;
-        Ok(rec)
+        let memory_limit = match rerun_config.max_bytes {
+            Some(bytes) => MemoryLimit::from_bytes(bytes),
+            None => MemoryLimit::from_fraction_of_total(1.0), // No limit
+        };
 
+        let rec = base_recording_builder(self.config.application_info.system_id.as_str())
+            .serve_grpc_opts("0.0.0.0", 9876, memory_limit)?;
+        Ok(rec)
     }
 }
-
 
 fn deterministic_uuid_v4_from_string(s: &str) -> Uuid {
     let hash = Sha256::digest(s.as_bytes());
@@ -156,7 +171,10 @@ mod tests {
 
         let mut servers = BTreeMap::new();
         let mut server_config = BTreeMap::new();
-        server_config.insert("max_bytes".to_string(), Value::Number(serde_json::Number::from(1073741824u64))); // 1GB
+        server_config.insert(
+            "max_bytes".to_string(),
+            Value::Number(serde_json::Number::from(1073741824u64)),
+        ); // 1GB
 
         servers.insert(
             "test_server".to_string(),
@@ -299,8 +317,9 @@ mod tests {
         // Test the From trait implementation for RecordingStreamError
         // We'll create a simple error and verify it gets wrapped correctly
 
-        let err: RerunGRpcInterfaceError =
-            serde_json::from_str::<serde_json::Value>("not json").unwrap_err().into();
+        let err: RerunGRpcInterfaceError = serde_json::from_str::<serde_json::Value>("not json")
+            .unwrap_err()
+            .into();
         match err {
             RerunGRpcInterfaceError::SerdeJson(_) => {}
             _ => panic!("Expected SerdeJson variant"),
@@ -486,7 +505,10 @@ mod tests {
         // Add another server to the same interface
         if let Some(interface_config) = config.interfaces.get_mut("test_interface") {
             let mut second_server_config = BTreeMap::new();
-            second_server_config.insert("max_bytes".to_string(), Value::Number(serde_json::Number::from(2147483648u64))); // 2GB
+            second_server_config.insert(
+                "max_bytes".to_string(),
+                Value::Number(serde_json::Number::from(2147483648u64)),
+            ); // 2GB
 
             interface_config.servers.insert(
                 "second_server".to_string(),
@@ -540,9 +562,15 @@ mod tests {
     #[test]
     fn test_decode_config_success() {
         let mut config_map = BTreeMap::new();
-        config_map.insert("max_bytes".to_string(), Value::Number(serde_json::Number::from(1073741824u64)));
+        config_map.insert(
+            "max_bytes".to_string(),
+            Value::Number(serde_json::Number::from(1073741824u64)),
+        );
 
-        let result: Result<crate::interfaces::rerun::RerunGRpcServerConfig, RerunGRpcInterfaceError> = decode_config(&config_map);
+        let result: Result<
+            crate::interfaces::rerun::RerunGRpcServerConfig,
+            RerunGRpcInterfaceError,
+        > = decode_config(&config_map);
         assert!(result.is_ok());
 
         let decoded = result.unwrap();
@@ -552,9 +580,15 @@ mod tests {
     #[test]
     fn test_decode_config_failure() {
         let mut config_map = BTreeMap::new();
-        config_map.insert("invalid_field".to_string(), Value::String("invalid_value".to_string()));
+        config_map.insert(
+            "invalid_field".to_string(),
+            Value::String("invalid_value".to_string()),
+        );
 
-        let result: Result<crate::interfaces::rerun::RerunGRpcServerConfig, RerunGRpcInterfaceError> = decode_config(&config_map);
+        let result: Result<
+            crate::interfaces::rerun::RerunGRpcServerConfig,
+            RerunGRpcInterfaceError,
+        > = decode_config(&config_map);
         assert!(result.is_err());
 
         match result.unwrap_err() {
