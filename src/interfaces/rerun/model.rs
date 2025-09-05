@@ -9,16 +9,16 @@ pub struct RerunGRpcServerConfig {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ChunkBatcherConfig {
-    pub flush_tick_secs: f32,
-    pub flush_num_byte: u64,
+    pub flush_tick: f32,
+    pub flush_num_bytes: u64,
     pub flush_num_rows: u64,
 }
 
 impl Default for ChunkBatcherConfig {
     fn default() -> Self {
         Self {
-            flush_tick_secs: 0.008,
-            flush_num_byte: 1048576, // 1MiB
+            flush_tick: 0.008,
+            flush_num_bytes: 1048576, // 1MiB
             flush_num_rows: 18446744073709551615,
         }
     }

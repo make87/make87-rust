@@ -86,8 +86,8 @@ impl RerunGRpcInterface {
         // Configure the chunk batcher
         let mut batcher_config = ChunkBatcherConfig::from_env().unwrap_or_default();
         batcher_config.flush_tick =
-            Duration::from_secs_f32(rerun_config.batcher_config.flush_tick_secs);
-        batcher_config.flush_num_bytes = rerun_config.batcher_config.flush_num_byte;
+            Duration::from_secs_f32(rerun_config.batcher_config.flush_tick);
+        batcher_config.flush_num_bytes = rerun_config.batcher_config.flush_num_bytes;
         batcher_config.flush_num_rows = rerun_config.batcher_config.flush_num_rows;
 
         let rec = base_recording_builder(self.config.application_info.system_id.as_str())
