@@ -17,9 +17,9 @@ pub struct ChunkBatcherConfig {
 impl Default for ChunkBatcherConfig {
     fn default() -> Self {
         Self {
-            flush_tick: 0.008,
+            flush_tick: 0.2, // 200ms
             flush_num_bytes: 1048576, // 1MiB
-            flush_num_rows: 18446744073709551615,
+            flush_num_rows: 18446744073709551615, // u64::MAX
         }
     }
 }
