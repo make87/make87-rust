@@ -470,8 +470,14 @@ mod tests {
     fn test_get_server_recording_stream_invalid_config() {
         let mut config = create_test_config();
 
-        // Create a server with invalid configuration (missing max_bytes)
+        // Create a server with invalid configuration (wrong type for max_bytes)
         if let Some(interface_config) = config.interfaces.get_mut("test_interface") {
+            let mut invalid_config = BTreeMap::new();
+            invalid_config.insert(
+                "max_bytes".to_string(),
+                Value::String("not_a_number".to_string()), // Wrong type
+            );
+
             interface_config.servers.insert(
                 "invalid_server".to_string(),
                 ServerServiceConfig {
@@ -479,7 +485,7 @@ mod tests {
                     key: "invalid_server_key".to_string(),
                     spec: "invalid_server_spec".to_string(),
                     interface_name: "rerun".to_string(),
-                    config: BTreeMap::new(), // Empty config - missing max_bytes
+                    config: invalid_config,
                     protocol: "grpc".to_string(),
                 },
             );
@@ -488,7 +494,7 @@ mod tests {
         let interface = RerunGRpcInterface::new(config, "test_interface");
         let result = interface.get_server_recording_stream("invalid_server");
 
-        // Should fail due to missing max_bytes in config
+        // Should fail due to invalid type in config
         assert!(result.is_err());
         match result.unwrap_err() {
             RerunGRpcInterfaceError::SerdeJson(_) => {
@@ -574,15 +580,16 @@ mod tests {
         assert!(result.is_ok());
 
         let decoded = result.unwrap();
-        assert_eq!(decoded.max_bytes, 1073741824u64);
+        assert_eq!(decoded.max_bytes, Some(1073741824u64));
     }
 
     #[test]
     fn test_decode_config_failure() {
         let mut config_map = BTreeMap::new();
+        // Use a field with wrong type to force deserialization error
         config_map.insert(
-            "invalid_field".to_string(),
-            Value::String("invalid_value".to_string()),
+            "max_bytes".to_string(),
+            Value::String("not_a_number".to_string()),
         );
 
         let result: Result<
