@@ -8,7 +8,7 @@ authors = [
 edition = "2021"
 homepage = "https://www.make87.com"
 repository = "https://github.com/make87/make87-rust"
-license-file = "LICENSE"
+license = "Apache-2.0"
 description = "Rust SDK for make87 platform."
 
 [lib]
@@ -38,7 +38,7 @@ aws-credential-types = { version = "1.2.5", optional = true, features = [
 make87_messages = { version = "0.2.8", optional = true }
 regex = "1.11.1"
 once_cell = "1.21.3"
-rerun = { version = "0.24.1", optional = true }
+rerun = { version = "0.25.1", optional = true }
 uuid = { version = "1.18.0", features = ["v4"], optional = true }
 sha2 = { version = "0.10.9", optional = true }
 
