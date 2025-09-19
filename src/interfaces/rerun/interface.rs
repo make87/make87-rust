@@ -2,7 +2,7 @@ use crate::config::{load_config_from_default_env, ConfigError};
 use crate::interfaces::rerun::{RerunGRpcClientConfig, RerunGRpcServerConfig};
 use crate::models::{ApplicationEnvConfig, BoundClient, ServerServiceConfig};
 use rerun::log::ChunkBatcherConfig;
-use rerun::{MemoryLimit, RecordingStream, RecordingStreamBuilder, RecordingStreamError};
+use rerun::{MemoryLimit, RecordingStream, RecordingStreamBuilder, RecordingStreamError, ServerOptions};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -19,7 +19,7 @@ fn decode_config<T: serde::de::DeserializeOwned>(
 
 fn base_recording_builder(system_id: &str) -> RecordingStreamBuilder {
     RecordingStreamBuilder::new(system_id)
-        .recording_id(deterministic_uuid_v4_from_string(system_id))
+        .recording_id(deterministic_uuid_v4_from_string(system_id).to_string())
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -96,10 +96,7 @@ impl RerunGRpcInterface {
                 format!(
                     "rerun+http://{}:{}/proxy",
                     client_cfg.access_point.vpn_ip, client_cfg.access_point.vpn_port
-                ),
-                rerun_config
-                    .flush_timeout
-                    .map(|seconds| Duration::from_secs_f32(seconds)),
+                )
             )?;
 
         Ok(rec)
@@ -121,7 +118,10 @@ impl RerunGRpcInterface {
         };
 
         let rec = base_recording_builder(self.config.application_info.system_id.as_str())
-            .serve_grpc_opts("0.0.0.0", 9876, memory_limit)?;
+            .serve_grpc_opts("0.0.0.0", 9876, ServerOptions {
+                memory_limit,
+                ..Default::default()
+            })?;
         Ok(rec)
     }
 }

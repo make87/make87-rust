@@ -28,10 +28,4 @@ impl Default for ChunkBatcherConfig {
 pub struct RerunGRpcClientConfig {
     #[serde(default)]
     pub batcher_config: ChunkBatcherConfig,
-    #[serde(default = "default_flush_timeout")]
-    pub flush_timeout: Option<f32>,
-}
-
-fn default_flush_timeout() -> Option<f32> {
-    Some(3.0)
 }
