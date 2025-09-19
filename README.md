@@ -19,6 +19,7 @@ make87 = "*"  # replace with latest version
 You can enable additional features for transport and encoding support:
 
 - `zenoh` → Enables Zenoh transport (enables `interfaces::zenoh`)
+- `rerun` → Enables Rerun gRPC transport (enables `interfaces::rerun`)
 - `protobuf` → Enables Protobuf encoding (enables `encodings::protobuf`)
 - `yaml` → Enables YAML encoding (enables `encodings::yaml`)
 
@@ -34,6 +35,7 @@ make87 = { version = "*", features = ["zenoh", "protobuf", "yaml"] }
 ### Feature-gated Modules
 
 - `interfaces::zenoh` is only available if the `zenoh` feature is enabled.
+- `interfaces::rerun` is only available if the `rerun` feature is enabled.
 - `encodings::protobuf` is only available if the `protobuf` feature is enabled.
 - `encodings::yaml` is only available if the `yaml` feature is enabled.
 
