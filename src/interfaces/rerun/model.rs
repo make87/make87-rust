@@ -3,7 +3,25 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct RerunGRpcServerConfig {
     #[serde(default)]
-    pub max_bytes: Option<u64>,
+    pub memory_limit: Option<u64>,
+    #[serde(default)]
+    pub playback_behavior: PlaybackBehavior,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
+pub enum PlaybackBehavior {
+    /// Start playing back all the old data first,
+    /// and only after start sending anything that happened since.
+    OldestFirst,
+    /// Prioritize the newest arriving messages,
+    /// replaying the history later, starting with the newest.
+    NewestFirst,
+}
+
+impl Default for PlaybackBehavior {
+    fn default() -> Self {
+        Self::OldestFirst
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]

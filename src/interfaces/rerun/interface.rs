@@ -1,5 +1,5 @@
 use crate::config::{load_config_from_default_env, ConfigError};
-use crate::interfaces::rerun::{RerunGRpcClientConfig, RerunGRpcServerConfig};
+use crate::interfaces::rerun::{PlaybackBehavior, RerunGRpcClientConfig, RerunGRpcServerConfig};
 use crate::models::{ApplicationEnvConfig, BoundClient, ServerServiceConfig};
 use rerun::log::ChunkBatcherConfig;
 use rerun::{MemoryLimit, RecordingStream, RecordingStreamBuilder, RecordingStreamError, ServerOptions};
@@ -20,6 +20,13 @@ fn decode_config<T: serde::de::DeserializeOwned>(
 fn base_recording_builder(system_id: &str) -> RecordingStreamBuilder {
     RecordingStreamBuilder::new(system_id)
         .recording_id(deterministic_uuid_v4_from_string(system_id).to_string())
+}
+
+fn convert_playback_behavior(behavior: PlaybackBehavior) -> rerun::PlaybackBehavior {
+    match behavior {
+        PlaybackBehavior::OldestFirst => rerun::PlaybackBehavior::OldestFirst,
+        PlaybackBehavior::NewestFirst => rerun::PlaybackBehavior::NewestFirst,
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -112,15 +119,15 @@ impl RerunGRpcInterface {
 
         let rerun_config: RerunGRpcServerConfig = decode_config(&server_cfg.config)?;
 
-        let memory_limit = match rerun_config.max_bytes {
+        let memory_limit = match rerun_config.memory_limit {
             Some(bytes) => MemoryLimit::from_bytes(bytes),
             None => MemoryLimit::from_fraction_of_total(1.0), // No limit
         };
 
         let rec = base_recording_builder(self.config.application_info.system_id.as_str())
             .serve_grpc_opts("0.0.0.0", 9876, ServerOptions {
+                playback_behavior: convert_playback_behavior(rerun_config.playback_behavior),
                 memory_limit,
-                ..Default::default()
             })?;
         Ok(rec)
     }
@@ -172,9 +179,13 @@ mod tests {
         let mut servers = BTreeMap::new();
         let mut server_config = BTreeMap::new();
         server_config.insert(
-            "max_bytes".to_string(),
+            "memory_limit".to_string(),
             Value::Number(serde_json::Number::from(1073741824u64)),
         ); // 1GB
+        server_config.insert(
+            "playback_behavior".to_string(),
+            Value::String("OldestFirst".to_string()),
+        );
 
         servers.insert(
             "test_server".to_string(),
@@ -413,7 +424,8 @@ mod tests {
         assert_eq!(server.key, "test_server_key");
         assert_eq!(server.spec, "test_server_spec");
         assert_eq!(server.protocol, "grpc");
-        assert!(server.config.contains_key("max_bytes"));
+        assert!(server.config.contains_key("memory_limit"));
+        assert!(server.config.contains_key("playback_behavior"));
     }
 
     #[test]
@@ -470,11 +482,11 @@ mod tests {
     fn test_get_server_recording_stream_invalid_config() {
         let mut config = create_test_config();
 
-        // Create a server with invalid configuration (wrong type for max_bytes)
+        // Create a server with invalid configuration (wrong type for memory_limit)
         if let Some(interface_config) = config.interfaces.get_mut("test_interface") {
             let mut invalid_config = BTreeMap::new();
             invalid_config.insert(
-                "max_bytes".to_string(),
+                "memory_limit".to_string(),
                 Value::String("not_a_number".to_string()), // Wrong type
             );
 
@@ -512,9 +524,13 @@ mod tests {
         if let Some(interface_config) = config.interfaces.get_mut("test_interface") {
             let mut second_server_config = BTreeMap::new();
             second_server_config.insert(
-                "max_bytes".to_string(),
+                "memory_limit".to_string(),
                 Value::Number(serde_json::Number::from(2147483648u64)),
             ); // 2GB
+            second_server_config.insert(
+                "playback_behavior".to_string(),
+                Value::String("NewestFirst".to_string()),
+            );
 
             interface_config.servers.insert(
                 "second_server".to_string(),
@@ -542,10 +558,17 @@ mod tests {
         assert_eq!(second_server.unwrap().name, "second_server_service");
         assert_eq!(second_server.unwrap().protocol, "http");
 
-        // Check that the max_bytes config is different
-        let first_max_bytes = first_server.unwrap().config.get("max_bytes").unwrap();
-        let second_max_bytes = second_server.unwrap().config.get("max_bytes").unwrap();
-        assert_ne!(first_max_bytes, second_max_bytes);
+        // Check that the memory_limit config is different
+        let first_memory_limit = first_server.unwrap().config.get("memory_limit").unwrap();
+        let second_memory_limit = second_server.unwrap().config.get("memory_limit").unwrap();
+        assert_ne!(first_memory_limit, second_memory_limit);
+
+        // Check that the playback_behavior config is different
+        let first_playback = first_server.unwrap().config.get("playback_behavior").unwrap();
+        let second_playback = second_server.unwrap().config.get("playback_behavior").unwrap();
+        assert_ne!(first_playback, second_playback);
+        assert_eq!(first_playback, "OldestFirst");
+        assert_eq!(second_playback, "NewestFirst");
     }
 
     #[test]
@@ -569,8 +592,12 @@ mod tests {
     fn test_decode_config_success() {
         let mut config_map = BTreeMap::new();
         config_map.insert(
-            "max_bytes".to_string(),
+            "memory_limit".to_string(),
             Value::Number(serde_json::Number::from(1073741824u64)),
+        );
+        config_map.insert(
+            "playback_behavior".to_string(),
+            Value::String("NewestFirst".to_string()),
         );
 
         let result: Result<
@@ -580,7 +607,8 @@ mod tests {
         assert!(result.is_ok());
 
         let decoded = result.unwrap();
-        assert_eq!(decoded.max_bytes, Some(1073741824u64));
+        assert_eq!(decoded.memory_limit, Some(1073741824u64));
+        assert_eq!(decoded.playback_behavior, PlaybackBehavior::NewestFirst);
     }
 
     #[test]
@@ -588,7 +616,7 @@ mod tests {
         let mut config_map = BTreeMap::new();
         // Use a field with wrong type to force deserialization error
         config_map.insert(
-            "max_bytes".to_string(),
+            "memory_limit".to_string(),
             Value::String("not_a_number".to_string()),
         );
 
@@ -631,5 +659,37 @@ mod tests {
 
         // Should return None for any server config request
         assert!(interface.get_server_service_config("any_server").is_none());
+    }
+
+    #[test]
+    fn test_convert_playback_behavior() {
+        // Test that the conversion functions work without panicking
+        let oldest_first = convert_playback_behavior(PlaybackBehavior::OldestFirst);
+        let newest_first = convert_playback_behavior(PlaybackBehavior::NewestFirst);
+
+        // We can't directly compare rerun::PlaybackBehavior because it doesn't implement PartialEq
+        // but we can test that the conversion function produces the correct type
+        let _: rerun::PlaybackBehavior = oldest_first;
+        let _: rerun::PlaybackBehavior = newest_first;
+    }
+
+    #[test]
+    fn test_decode_config_with_default_playback_behavior() {
+        let mut config_map = BTreeMap::new();
+        config_map.insert(
+            "memory_limit".to_string(),
+            Value::Number(serde_json::Number::from(1073741824u64)),
+        );
+        // No playback_behavior specified - should use default
+
+        let result: Result<
+            crate::interfaces::rerun::RerunGRpcServerConfig,
+            RerunGRpcInterfaceError,
+        > = decode_config(&config_map);
+        assert!(result.is_ok());
+
+        let decoded = result.unwrap();
+        assert_eq!(decoded.memory_limit, Some(1073741824u64));
+        assert_eq!(decoded.playback_behavior, PlaybackBehavior::OldestFirst); // Default
     }
 }
