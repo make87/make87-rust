@@ -3,7 +3,7 @@ use crate::interfaces::zenoh::model::{
     HandlerChannel, ZenohPublisherConfig, ZenohQuerierConfig, ZenohQueryableConfig,
     ZenohSubscriberConfig,
 };
-use crate::models::{ApplicationEnvConfig, ProviderEndpointConfig, PublisherTopicConfig};
+use crate::models::{ApplicationEnvConfig, BoundProvider, BoundPublisher, BoundMultiSubscriber, BoundMultiClient};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
@@ -32,6 +32,10 @@ pub enum ZenohInterfaceError {
     ReqEndpointNotFound(String),
     #[error("No provider endpoint found with name: {0}")]
     PrvEndpointNotFound(String),
+    #[error("No multi-subscriber found with name: {0}")]
+    MultiSubNotFound(String),
+    #[error("No multi-client found with name: {0}")]
+    MultiClientNotFound(String),
     #[error(transparent)]
     Config(#[from] ConfigError),
     #[error(transparent)]
@@ -73,21 +77,53 @@ impl ZenohInterface {
 
     pub fn zenoh_config(&self) -> Result<Config, ZenohInterfaceError> {
         let mut cfg = Config::default();
-        if !is_port_in_use(7447) {
-            let listen_endpoints = vec!["tcp/0.0.0.0:7447"];
-            let listen_json = serde_json::to_string(&listen_endpoints)?;
-            cfg.insert_json5("listen/endpoints", &listen_json)?;
+
+        // Set up listen endpoints if binding is configured or if port is available
+        let iface = self.config.interfaces.get(&self.name);
+
+        if let Some(iface_cfg) = iface {
+            // If binding is configured, use that port
+            if let Some(binding) = &iface_cfg.binding {
+                let listen_endpoints = vec![format!("tcp/0.0.0.0:{}", binding.container_port)];
+                let listen_json = serde_json::to_string(&listen_endpoints)?;
+                cfg.insert_json5("listen/endpoints", &listen_json)?;
+            } else {
+                // Otherwise, only listen if port 7447 is available
+                if !is_port_in_use(7447) {
+                    let listen_endpoints = vec!["tcp/0.0.0.0:7447"];
+                    let listen_json = serde_json::to_string(&listen_endpoints)?;
+                    cfg.insert_json5("listen/endpoints", &listen_json)?;
+                }
+            }
         }
 
-        let endpoints_set: HashSet<_> = self
-            .config
-            .interfaces
-            .get(&self.name)
-            .map(|iface| iface.subscribers.values().map(|s| &s.access_point))
-            .into_iter()
-            .flatten()
-            .map(|ap| format!("tcp/{}:{}", ap.vpn_ip, ap.vpn_port))
-            .collect();
+        let mut endpoints_set: HashSet<_> = HashSet::new();
+
+        if let Some(iface) = iface {
+            // Add subscriber endpoints
+            for s in iface.subscribers.values() {
+                endpoints_set.insert(format!("tcp/{}:{}", s.access_point.vpn_ip, s.access_point.vpn_port));
+            }
+
+            // Add requester endpoints
+            for r in iface.requesters.values() {
+                endpoints_set.insert(format!("tcp/{}:{}", r.access_point.vpn_ip, r.access_point.vpn_port));
+            }
+
+            // Add multi-subscriber endpoints
+            for ms in iface.multi_subscribers.values() {
+                for ap in ms.access_points.values() {
+                    endpoints_set.insert(format!("tcp/{}:{}", ap.vpn_ip, ap.vpn_port));
+                }
+            }
+
+            // Add multi-client endpoints
+            for mc in iface.multi_clients.values() {
+                for ap in mc.access_points.values() {
+                    endpoints_set.insert(format!("tcp/{}:{}", ap.vpn_ip, ap.vpn_port));
+                }
+            }
+        }
 
         let mut endpoints: Vec<_> = endpoints_set.into_iter().collect();
         endpoints.sort();
@@ -102,7 +138,7 @@ impl ZenohInterface {
         zenoh::open(cfg).await.map_err(Into::into)
     }
 
-    pub fn get_publisher_config(&self, topic_name: &str) -> Option<&PublisherTopicConfig> {
+    pub fn get_publisher_config(&self, topic_name: &str) -> Option<&BoundPublisher> {
         self.config
             .interfaces
             .get(&self.name)?
@@ -132,12 +168,28 @@ impl ZenohInterface {
             .get(endpoint_name)
     }
 
-    pub fn get_provider_config(&self, endpoint_name: &str) -> Option<&ProviderEndpointConfig> {
+    pub fn get_provider_config(&self, endpoint_name: &str) -> Option<&BoundProvider> {
         self.config
             .interfaces
             .get(&self.name)?
             .providers
             .get(endpoint_name)
+    }
+
+    pub fn get_multi_subscriber_config(&self, name: &str) -> Option<&BoundMultiSubscriber> {
+        self.config
+            .interfaces
+            .get(&self.name)?
+            .multi_subscribers
+            .get(name)
+    }
+
+    pub fn get_multi_client_config(&self, name: &str) -> Option<&BoundMultiClient> {
+        self.config
+            .interfaces
+            .get(&self.name)?
+            .multi_clients
+            .get(name)
     }
 
     pub async fn get_publisher(
@@ -148,9 +200,9 @@ impl ZenohInterface {
         let pub_cfg = self
             .get_publisher_config(name)
             .ok_or_else(|| ZenohInterfaceError::PubTopicNotFound(name.to_string()))?;
-        let zenoh_config: ZenohPublisherConfig = decode_config(&pub_cfg.config)?;
+        let zenoh_config: ZenohPublisherConfig = decode_config(&pub_cfg.config.config)?;
         let publisher = session
-            .declare_publisher(pub_cfg.topic_key.clone())
+            .declare_publisher(pub_cfg.config.topic_key.clone())
             .congestion_control(zenoh_config.congestion_control.to_zenoh())
             .priority(zenoh_config.priority.to_zenoh())
             .express(zenoh_config.express)
@@ -244,18 +296,18 @@ impl ZenohInterface {
         let prv_cfg = self
             .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
-        let zenoh_config: ZenohQueryableConfig = decode_config(&prv_cfg.config)?;
+        let zenoh_config: ZenohQueryableConfig = decode_config(&prv_cfg.config.config)?;
         match &zenoh_config.handler {
             HandlerChannel::Fifo { capacity } => {
                 let queryable = session
-                    .declare_queryable(prv_cfg.endpoint_key.clone())
+                    .declare_queryable(prv_cfg.config.endpoint_key.clone())
                     .with(FifoChannel::new(*capacity as usize))
                     .await?;
                 Ok(ConfiguredQueryable::Fifo(queryable))
             }
             HandlerChannel::Ring { capacity } => {
                 let queryable = session
-                    .declare_queryable(prv_cfg.endpoint_key.clone())
+                    .declare_queryable(prv_cfg.config.endpoint_key.clone())
                     .with(RingChannel::new(*capacity as usize))
                     .await?;
                 Ok(ConfiguredQueryable::Ring(queryable))
@@ -274,7 +326,7 @@ impl ZenohInterface {
             .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
         let queryable = session
-            .declare_queryable(prv_cfg.endpoint_key.clone())
+            .declare_queryable(prv_cfg.config.endpoint_key.clone())
             .callback(handler)
             .await?;
         Ok(queryable)
@@ -290,19 +342,72 @@ impl ZenohInterface {
             .get_provider_config(name)
             .ok_or_else(|| ZenohInterfaceError::PrvEndpointNotFound(name.to_string()))?;
         let queryable = session
-            .declare_queryable(prv_cfg.endpoint_key.clone())
+            .declare_queryable(prv_cfg.config.endpoint_key.clone())
             .callback_mut(handler)
             .await?;
         Ok(queryable)
+    }
+
+    pub async fn get_multi_subscriber(
+        &self,
+        session: &Session,
+        name: &str,
+    ) -> Result<Vec<ConfiguredSubscriber>, ZenohInterfaceError> {
+        let multi_sub_cfg = self
+            .get_multi_subscriber_config(name)
+            .ok_or_else(|| ZenohInterfaceError::MultiSubNotFound(name.to_string()))?;
+        let zenoh_config: ZenohSubscriberConfig = decode_config(&multi_sub_cfg.config.config)?;
+
+        let mut subscribers = Vec::new();
+        for topic_key in &multi_sub_cfg.config.topic_keys {
+            let subscriber = match &zenoh_config.handler {
+                HandlerChannel::Fifo { capacity } => {
+                    let sub = session
+                        .declare_subscriber(topic_key.clone())
+                        .with(FifoChannel::new(*capacity as usize))
+                        .await?;
+                    ConfiguredSubscriber::Fifo(sub)
+                }
+                HandlerChannel::Ring { capacity } => {
+                    let sub = session
+                        .declare_subscriber(topic_key.clone())
+                        .with(RingChannel::new(*capacity as usize))
+                        .await?;
+                    ConfiguredSubscriber::Ring(sub)
+                }
+            };
+            subscribers.push(subscriber);
+        }
+        Ok(subscribers)
+    }
+
+    pub async fn get_multi_client(
+        &self,
+        session: &Session,
+        name: &str,
+    ) -> Result<Vec<Querier<'static>>, ZenohInterfaceError> {
+        let multi_client_cfg = self
+            .get_multi_client_config(name)
+            .ok_or_else(|| ZenohInterfaceError::MultiClientNotFound(name.to_string()))?;
+        let zenoh_config: ZenohQuerierConfig = decode_config(&multi_client_cfg.config.config)?;
+
+        let mut queriers = Vec::new();
+        for key in &multi_client_cfg.config.keys {
+            let querier = session
+                .declare_querier(key.clone())
+                .congestion_control(zenoh_config.congestion_control.to_zenoh())
+                .priority(zenoh_config.priority.to_zenoh())
+                .express(zenoh_config.express)
+                .await?;
+            queriers.push(querier);
+        }
+        Ok(queriers)
     }
 }
 
 fn is_port_in_use(port: u16) -> bool {
     let addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port);
-    TcpListener::bind(addr).map_err(
-        // print the error
-        |e| eprintln!("Failed to bind to port {}: {}", port, e),
-    ).is_err()
+    TcpListener::bind(addr).is_err()
 }
 
 #[cfg(test)]
@@ -311,7 +416,7 @@ mod tests {
     use crate::interfaces::zenoh::model::ZenohPublisherConfig;
     use crate::models::{
         ApplicationEnvConfig, InterfaceConfig, ProviderEndpointConfig, PublisherTopicConfig,
-        RequesterEndpointConfig, SubscriberTopicConfig,
+        RequesterEndpointConfig, SubscriberTopicConfig, BoundProvider, BoundPublisher,
     };
     use crate::models::{ApplicationInfo, MountedPeripherals};
     use serde_json::json;
@@ -348,6 +453,10 @@ mod tests {
             providers: BTreeMap::new(),
             clients: BTreeMap::new(),
             servers: BTreeMap::new(),
+            multi_subscribers: BTreeMap::new(),
+            multi_clients: BTreeMap::new(),
+            peers: BTreeMap::new(),
+            binding: None,
         }
     }
 
@@ -434,7 +543,10 @@ mod tests {
         let mut iface_config = make_interface_config();
         iface_config
             .publishers
-            .insert("HELLO_WORLD_MESSAGE".into(), pub_topic_config());
+            .insert("HELLO_WORLD_MESSAGE".into(), BoundPublisher {
+                config: pub_topic_config(),
+                binding: None,
+            });
         config.interfaces.insert("zenoh".into(), iface_config);
 
         let iface = ZenohInterface::new(config, "zenoh");
@@ -443,7 +555,7 @@ mod tests {
 
         // Also test decoding
         if let Some(pub_cfg) = result {
-            let decoded: ZenohPublisherConfig = decode_config(&pub_cfg.config).unwrap();
+            let decoded: ZenohPublisherConfig = decode_config(&pub_cfg.config.config).unwrap();
             assert_eq!(decoded.priority.to_zenoh(), qos::Priority::RealTime);
             assert!(decoded.express);
         }
@@ -458,6 +570,10 @@ mod tests {
         assert!(requester.is_err());
         let queryable = iface.get_queryable(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(queryable.is_err());
+
+        // Explicitly close session and wait for cleanup to avoid Zenoh internal race conditions
+        drop(session);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -496,6 +612,10 @@ mod tests {
         let session = iface.get_session().await.unwrap();
         let subscriber = iface.get_subscriber(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(subscriber.is_ok());
+
+        // Explicitly close session and wait for cleanup to avoid Zenoh internal race conditions
+        drop(session);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -532,6 +652,10 @@ mod tests {
         let session = iface.get_session().await.unwrap();
         let requester = iface.get_querier(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(requester.is_ok());
+
+        // Explicitly close session and wait for cleanup to avoid Zenoh internal race conditions
+        drop(session);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -540,7 +664,10 @@ mod tests {
         let mut iface_config = make_interface_config();
         iface_config
             .providers
-            .insert("HELLO_WORLD_MESSAGE".into(), prv_endpoint_config());
+            .insert("HELLO_WORLD_MESSAGE".into(), BoundProvider {
+                config: prv_endpoint_config(),
+                binding: None,
+            });
         config.interfaces.insert("zenoh".into(), iface_config);
 
         let iface = ZenohInterface::new(config, "zenoh");
@@ -550,7 +677,7 @@ mod tests {
         // Also test decoding
         if let Some(prv_cfg) = result {
             use crate::interfaces::zenoh::model::ZenohQueryableConfig;
-            let decoded: ZenohQueryableConfig = decode_config(&prv_cfg.config).unwrap();
+            let decoded: ZenohQueryableConfig = decode_config(&prv_cfg.config.config).unwrap();
             match &decoded.handler {
                 HandlerChannel::Ring { capacity } => assert_eq!(*capacity, 7),
                 _ => panic!("Expected RING handler"),
@@ -560,6 +687,10 @@ mod tests {
         let session = iface.get_session().await.unwrap();
         let queryable = iface.get_queryable(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(queryable.is_ok());
+
+        // Explicitly close session and wait for cleanup to avoid Zenoh internal race conditions
+        drop(session);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -572,6 +703,10 @@ mod tests {
         let session = iface.get_session().await.unwrap();
         let publisher = iface.get_publisher(&session, "DOES_NOT_EXIST").await;
         assert!(publisher.is_err());
+
+        // Explicitly close session and wait for cleanup to avoid Zenoh internal race conditions
+        drop(session);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -584,6 +719,10 @@ mod tests {
         let session = iface.get_session().await.unwrap();
         let subscriber = iface.get_subscriber(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(subscriber.is_err());
+
+        // Explicitly close session and wait for cleanup to avoid Zenoh internal race conditions
+        drop(session);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -602,5 +741,9 @@ mod tests {
         assert!(requester.is_err());
         let queryable = iface.get_queryable(&session, "HELLO_WORLD_MESSAGE").await;
         assert!(queryable.is_err());
+
+        // Explicitly close session and wait for cleanup to avoid Zenoh internal race conditions
+        drop(session);
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 }

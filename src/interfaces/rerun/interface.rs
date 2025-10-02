@@ -1,6 +1,6 @@
 use crate::config::{load_config_from_default_env, ConfigError};
 use crate::interfaces::rerun::{PlaybackBehavior, RerunGRpcClientConfig, RerunGRpcServerConfig};
-use crate::models::{ApplicationEnvConfig, BoundClient, ServerServiceConfig};
+use crate::models::{ApplicationEnvConfig, BoundClient, BoundServer, BoundMultiClient};
 use rerun::log::ChunkBatcherConfig;
 use rerun::{MemoryLimit, RecordingStream, RecordingStreamBuilder, RecordingStreamError, ServerOptions};
 use serde_json::Value;
@@ -35,6 +35,8 @@ pub enum RerunGRpcInterfaceError {
     ClientServiceNotFound(String),
     #[error("No server service config found with name: {0}")]
     ServerServiceNotFound(String),
+    #[error("No multi-client service config found with name: {0}")]
+    MultiClientNotFound(String),
     #[error(transparent)]
     Config(#[from] ConfigError),
     #[error(transparent)]
@@ -72,12 +74,20 @@ impl RerunGRpcInterface {
             .get(topic_name)
     }
 
-    pub fn get_server_service_config(&self, topic_name: &str) -> Option<&ServerServiceConfig> {
+    pub fn get_server_service_config(&self, topic_name: &str) -> Option<&BoundServer> {
         self.config
             .interfaces
             .get(&self.name)?
             .servers
             .get(topic_name)
+    }
+
+    pub fn get_multi_client_service_config(&self, name: &str) -> Option<&BoundMultiClient> {
+        self.config
+            .interfaces
+            .get(&self.name)?
+            .multi_clients
+            .get(name)
     }
 
     pub fn get_client_recording_stream(
@@ -117,19 +127,71 @@ impl RerunGRpcInterface {
             .get_server_service_config(name)
             .ok_or_else(|| RerunGRpcInterfaceError::ServerServiceNotFound(name.to_string()))?;
 
-        let rerun_config: RerunGRpcServerConfig = decode_config(&server_cfg.config)?;
+        let rerun_config: RerunGRpcServerConfig = decode_config(&server_cfg.config.config)?;
 
         let memory_limit = match rerun_config.memory_limit {
             Some(bytes) => MemoryLimit::from_bytes(bytes),
             None => MemoryLimit::from_fraction_of_total(1.0), // No limit
         };
 
+        // Port resolution hierarchy: service binding -> interface binding -> default port
+        let grpc_port = server_cfg
+            .binding
+            .as_ref()
+            .map(|b| b.container_port)
+            .or_else(|| {
+                self.config
+                    .interfaces
+                    .get(&self.name)
+                    .and_then(|iface| iface.binding.as_ref())
+                    .map(|b| b.container_port)
+            })
+            .unwrap_or(9876);
+
         let rec = base_recording_builder(self.config.application_info.system_id.as_str())
-            .serve_grpc_opts("0.0.0.0", 9876, ServerOptions {
+            .serve_grpc_opts("0.0.0.0", grpc_port, ServerOptions {
                 playback_behavior: convert_playback_behavior(rerun_config.playback_behavior),
                 memory_limit,
             })?;
         Ok(rec)
+    }
+
+    pub fn get_multi_client_recording_streams(
+        &self,
+        name: &str,
+    ) -> Result<Vec<RecordingStream>, RerunGRpcInterfaceError> {
+        let multi_client_cfg = self
+            .get_multi_client_service_config(name)
+            .ok_or_else(|| RerunGRpcInterfaceError::MultiClientNotFound(name.to_string()))?;
+
+        let rerun_config: RerunGRpcClientConfig = decode_config(&multi_client_cfg.config.config)?;
+
+        // Configure the chunk batcher
+        let mut batcher_config = ChunkBatcherConfig::from_env().unwrap_or_default();
+        batcher_config.flush_tick =
+            Duration::from_secs_f32(rerun_config.batcher_config.flush_tick);
+        batcher_config.flush_num_bytes = rerun_config.batcher_config.flush_num_bytes;
+        batcher_config.flush_num_rows = rerun_config.batcher_config.flush_num_rows;
+
+        let system_id = &self.config.application_info.system_id;
+
+        let mut recording_streams = Vec::new();
+        for (i, (key, access_point)) in multi_client_cfg.access_points.iter().enumerate() {
+            // Create unique recording stream for each endpoint
+            let recording_id = deterministic_uuid_v4_from_string(&format!("{}_{}_{}",  system_id, key, i));
+            let rec = RecordingStreamBuilder::new(format!("{}_{}", system_id, key))
+                .recording_id(recording_id.to_string())
+                .batcher_config(batcher_config.clone())
+                .connect_grpc_opts(
+                    format!(
+                        "rerun+http://{}:{}/proxy",
+                        access_point.vpn_ip, access_point.vpn_port
+                    )
+                )?;
+            recording_streams.push(rec);
+        }
+
+        Ok(recording_streams)
     }
 }
 
@@ -147,6 +209,7 @@ mod tests {
     use super::*;
     use crate::models::{
         AccessPoint, ApplicationInfo, ClientServiceConfig, InterfaceConfig, MountedPeripherals,
+        ServerServiceConfig,
     };
     use serde_json::Value;
     use std::collections::BTreeMap;
@@ -189,13 +252,16 @@ mod tests {
 
         servers.insert(
             "test_server".to_string(),
-            ServerServiceConfig {
-                name: "test_server_service".to_string(),
-                key: "test_server_key".to_string(),
-                spec: "test_server_spec".to_string(),
-                interface_name: "rerun".to_string(),
-                config: server_config,
-                protocol: "grpc".to_string(),
+            BoundServer {
+                config: ServerServiceConfig {
+                    name: "test_server_service".to_string(),
+                    key: "test_server_key".to_string(),
+                    spec: "test_server_spec".to_string(),
+                    interface_name: "rerun".to_string(),
+                    config: server_config,
+                    protocol: "grpc".to_string(),
+                },
+                binding: None,
             },
         );
 
@@ -209,6 +275,10 @@ mod tests {
                 providers: BTreeMap::new(),
                 clients,
                 servers,
+                multi_subscribers: BTreeMap::new(),
+                multi_clients: BTreeMap::new(),
+                peers: BTreeMap::new(),
+                binding: None,
             },
         );
 
@@ -420,12 +490,12 @@ mod tests {
         assert!(server_config.is_some());
 
         let server = server_config.unwrap();
-        assert_eq!(server.name, "test_server_service");
-        assert_eq!(server.key, "test_server_key");
-        assert_eq!(server.spec, "test_server_spec");
-        assert_eq!(server.protocol, "grpc");
-        assert!(server.config.contains_key("memory_limit"));
-        assert!(server.config.contains_key("playback_behavior"));
+        assert_eq!(server.config.name, "test_server_service");
+        assert_eq!(server.config.key, "test_server_key");
+        assert_eq!(server.config.spec, "test_server_spec");
+        assert_eq!(server.config.protocol, "grpc");
+        assert!(server.config.config.contains_key("memory_limit"));
+        assert!(server.config.config.contains_key("playback_behavior"));
     }
 
     #[test]
@@ -492,13 +562,16 @@ mod tests {
 
             interface_config.servers.insert(
                 "invalid_server".to_string(),
-                ServerServiceConfig {
-                    name: "invalid_server_service".to_string(),
-                    key: "invalid_server_key".to_string(),
-                    spec: "invalid_server_spec".to_string(),
-                    interface_name: "rerun".to_string(),
-                    config: invalid_config,
-                    protocol: "grpc".to_string(),
+                BoundServer {
+                    config: ServerServiceConfig {
+                        name: "invalid_server_service".to_string(),
+                        key: "invalid_server_key".to_string(),
+                        spec: "invalid_server_spec".to_string(),
+                        interface_name: "rerun".to_string(),
+                        config: invalid_config,
+                        protocol: "grpc".to_string(),
+                    },
+                    binding: None,
                 },
             );
         }
@@ -534,13 +607,16 @@ mod tests {
 
             interface_config.servers.insert(
                 "second_server".to_string(),
-                ServerServiceConfig {
-                    name: "second_server_service".to_string(),
-                    key: "second_server_key".to_string(),
-                    spec: "second_server_spec".to_string(),
-                    interface_name: "rerun".to_string(),
-                    config: second_server_config,
-                    protocol: "http".to_string(),
+                BoundServer {
+                    config: ServerServiceConfig {
+                        name: "second_server_service".to_string(),
+                        key: "second_server_key".to_string(),
+                        spec: "second_server_spec".to_string(),
+                        interface_name: "rerun".to_string(),
+                        config: second_server_config,
+                        protocol: "http".to_string(),
+                    },
+                    binding: None,
                 },
             );
         }
@@ -550,22 +626,22 @@ mod tests {
         // Both servers should be accessible
         let first_server = interface.get_server_service_config("test_server");
         assert!(first_server.is_some());
-        assert_eq!(first_server.unwrap().name, "test_server_service");
-        assert_eq!(first_server.unwrap().protocol, "grpc");
+        assert_eq!(first_server.unwrap().config.name, "test_server_service");
+        assert_eq!(first_server.unwrap().config.protocol, "grpc");
 
         let second_server = interface.get_server_service_config("second_server");
         assert!(second_server.is_some());
-        assert_eq!(second_server.unwrap().name, "second_server_service");
-        assert_eq!(second_server.unwrap().protocol, "http");
+        assert_eq!(second_server.unwrap().config.name, "second_server_service");
+        assert_eq!(second_server.unwrap().config.protocol, "http");
 
         // Check that the memory_limit config is different
-        let first_memory_limit = first_server.unwrap().config.get("memory_limit").unwrap();
-        let second_memory_limit = second_server.unwrap().config.get("memory_limit").unwrap();
+        let first_memory_limit = first_server.unwrap().config.config.get("memory_limit").unwrap();
+        let second_memory_limit = second_server.unwrap().config.config.get("memory_limit").unwrap();
         assert_ne!(first_memory_limit, second_memory_limit);
 
         // Check that the playback_behavior config is different
-        let first_playback = first_server.unwrap().config.get("playback_behavior").unwrap();
-        let second_playback = second_server.unwrap().config.get("playback_behavior").unwrap();
+        let first_playback = first_server.unwrap().config.config.get("playback_behavior").unwrap();
+        let second_playback = second_server.unwrap().config.config.get("playback_behavior").unwrap();
         assert_ne!(first_playback, second_playback);
         assert_eq!(first_playback, "OldestFirst");
         assert_eq!(second_playback, "NewestFirst");

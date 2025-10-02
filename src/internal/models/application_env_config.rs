@@ -14,11 +14,26 @@ pub struct AccessPoint {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct Binding {
+    pub container_ip: String,
+    pub container_port: u16,
+    pub host_ip: String,
+    pub host_port: u16,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct BoundSubscriber {
     #[serde(flatten)]
     pub access_point: AccessPoint,
     #[serde(flatten)]
     pub config: SubscriberTopicConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BoundMultiSubscriber {
+    pub access_points: BTreeMap<String, AccessPoint>,
+    #[serde(flatten)]
+    pub config: MultiSubscriberTopicConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -38,14 +53,36 @@ pub struct BoundClient {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct BoundMultiClient {
+    pub access_points: BTreeMap<String, AccessPoint>,
+    #[serde(flatten)]
+    pub config: MultiClientServiceConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BoundPeer {
+    pub access_points: BTreeMap<String, AccessPoint>,
+    #[serde(flatten)]
+    pub config: PeerConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct InterfaceConfig {
     pub name: String,
-    pub publishers: BTreeMap<String, PublisherTopicConfig>,
+    pub publishers: BTreeMap<String, BoundPublisher>,
     pub subscribers: BTreeMap<String, BoundSubscriber>,
     pub requesters: BTreeMap<String, BoundRequester>,
-    pub providers: BTreeMap<String, ProviderEndpointConfig>,
+    pub providers: BTreeMap<String, BoundProvider>,
     pub clients: BTreeMap<String, BoundClient>,
-    pub servers: BTreeMap<String, ServerServiceConfig>,
+    pub servers: BTreeMap<String, BoundServer>,
+    #[serde(default)]
+    pub multi_clients: BTreeMap<String, BoundMultiClient>,
+    #[serde(default)]
+    pub multi_subscribers: BTreeMap<String, BoundMultiSubscriber>,
+    #[serde(default)]
+    pub peers: BTreeMap<String, BoundPeer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<Binding>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -291,18 +328,11 @@ fn default_encoding() -> Option<String> {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct PublisherTopicConfig {
-    pub topic_name: String,
-    pub topic_key: String,
-    pub message_type: String,
-    #[serde(default = "default_interface_name")]
-    pub interface_name: String,
+pub struct BoundPublisher {
     #[serde(flatten)]
-    pub config: BTreeMap<String, serde_json::Value>,
-    #[serde(default = "default_protocol")]
-    pub protocol: String,
-    #[serde(default = "default_encoding")]
-    pub encoding: Option<String>,
+    pub config: PublisherTopicConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<Binding>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -337,19 +367,11 @@ pub struct RequesterEndpointConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ProviderEndpointConfig {
-    pub endpoint_name: String,
-    pub endpoint_key: String,
-    pub requester_message_type: String,
-    pub provider_message_type: String,
-    #[serde(default = "default_interface_name")]
-    pub interface_name: String,
+pub struct BoundProvider {
     #[serde(flatten)]
-    pub config: BTreeMap<String, serde_json::Value>,
-    #[serde(default = "default_protocol")]
-    pub protocol: String,
-    #[serde(default = "default_encoding")]
-    pub encoding: Option<String>,
+    pub config: ProviderEndpointConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<Binding>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -373,12 +395,99 @@ pub struct ClientServiceConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct BoundServer {
+    #[serde(flatten)]
+    pub config: ServerServiceConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<Binding>,
+}
+
+
+#[derive(Serialize, Deserialize, PartialEq, Hash, Clone)]
+pub struct MultiSubscriberTopicConfig {
+    pub topic_name: String,
+    pub topic_keys: Vec<String>,
+    pub message_type: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_encoding")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Hash)]
 pub struct ServerServiceConfig {
     pub name: String,
     pub key: String,
     pub spec: String,
     #[serde(default = "default_interface_name")]
     pub interface_name: String,
+
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Hash, Clone)]
+pub struct ProviderEndpointConfig {
+    pub endpoint_name: String,
+    pub endpoint_key: String,
+    pub requester_message_type: String,
+    pub provider_message_type: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_encoding")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Hash)]
+pub struct PublisherTopicConfig {
+    pub topic_name: String,
+    pub topic_key: String,
+    pub message_type: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default = "default_encoding")]
+    pub encoding: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Hash)]
+pub struct PeerConfig {
+    pub name: String,
+    pub key: String,
+    pub peer_keys: Vec<String>,
+    pub spec: String,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+
+    #[serde(flatten)]
+    pub config: BTreeMap<String, serde_json::Value>,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Hash)]
+pub struct MultiClientServiceConfig {
+    pub name: String,
+    pub spec: String,
+    pub keys: Vec<String>,
+    #[serde(default = "default_interface_name")]
+    pub interface_name: String,
+
     #[serde(flatten)]
     pub config: BTreeMap<String, serde_json::Value>,
     #[serde(default = "default_protocol")]
