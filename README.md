@@ -1,3 +1,14 @@
+> ## ⚠️ Deprecated (legacy make87 app-platform SDK)
+>
+> This SDK supported the legacy make87 "application SDK integration" workflow.
+> make87 has pivoted to a CLI/agent-based device management workflow.
+>
+> **This package is unmaintained and will receive no further updates or fixes.**
+> If you are still using it, pin your dependency and migrate off this package.
+>
+> Status: Deprecated • Maintenance: none
+
+
 ![make87 Banner Logo](https://make87-files.nyc3.digitaloceanspaces.com/assets/branding/logo/make87_ME_1d_cv_cropped.svg)
 # make87 SDK for Rust
 
@@ -48,11 +59,5 @@ cargo doc --open
 
 ## Contributing
 
-We welcome contributions to the make87 SDK. Please follow these steps to contribute:
-
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-3. Make your changes.
-4. Ensure all tests pass (`cargo test`).
-5. Submit a pull request.
+This repository is archived and unmaintained. Issues and pull requests are not accepted.
 

@@ -11,7 +11,7 @@ on:
 jobs:
   release:
     if: startsWith(github.ref, 'refs/heads/release/')
-    runs-on: [ self-hosted, Linux, X64 ]
+    runs-on: ubuntu-latest
     environment: Release
     permissions:
       contents: write
